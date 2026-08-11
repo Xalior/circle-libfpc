@@ -562,6 +562,90 @@ begin
       + ' live, corrupted blocks=' + NumStr(bad) + ' (expect 0)');
 end;
 
+{ ---- P4c: the allocator bug, proved by arithmetic rather than by churn ---
+
+  heapmgr's free-list node is written into the free memory itself:
+
+    THeapBlock = record Size: ptruint; Next: PHeapBlock; EndAddr: pointer end;
+
+  On a 64-bit target that record is TWENTY-FOUR bytes. The smallest block the
+  allocator will ever create is `MinBlock`, and MinBlock is SIXTEEN --
+  `SysGetMem` keeps a split remainder whenever it is `>= MinBlock`, and
+  `SysFreeMem` clamps every release up to `MinBlock` and no further. On a
+  32-bit target the record is twelve bytes and sixteen is ample; on 64-bit the
+  constant was never revisited.
+
+  So freeing a small allocation writes twenty-four bytes into a sixteen-byte
+  block and puts `EndAddr` EIGHT BYTES PAST THE END, into whatever follows --
+  which is the next allocation's size header.
+
+  This rung does not hunt for that. It arranges it:
+
+    A := GetMem(8)    ->  a 16-byte block: 8 of header, 8 usable
+    B := GetMem(64)   ->  carved from the remainder, immediately after A
+    FreeMem(A)        ->  writes Size at A-8, Next at A, EndAddr at A+8
+                          ... and A+8 is B's size header.
+
+  Then it reads B's size header back. If it has changed, the allocator wrote
+  outside the block it was freeing, and that is the whole finding.
+
+  IT LEAVES THE HEAP CONSISTENT. B is deliberately leaked rather than freed:
+  A's own free-list node is correct -- its EndAddr genuinely is A+8 -- so the
+  chain is undamaged, and the only casualty is B, which nothing will touch
+  again. Seventy-two bytes, once. Everything after this rung runs normally. }
+
+procedure P4cMinBlockProof;
+var
+  a, b: PByte;
+  gap: PtrUInt;
+  before, after: PtrUInt;
+begin
+  Say('P4c start: heapmgr MinBlock=16 against a 24-byte free-list node');
+
+  a := GetMem(8);
+  b := GetMem(64);
+  if (a = nil) or (b = nil) then
+  begin
+    Say('P4c INCONCLUSIVE: an allocation failed');
+    Exit;
+  end;
+
+  gap := PtrUInt(b) - PtrUInt(a);
+  Say('P4c A=' + Hex16(PtrUInt(a)) + ' B=' + Hex16(PtrUInt(b))
+      + ' gap=' + NumStr(gap) + ' (16 means B sits immediately after A)');
+
+  if gap <> 16 then
+  begin
+    Say('P4c INCONCLUSIVE: the two blocks are not adjacent, so freeing A');
+    Say('P4c cannot reach B. Nothing is claimed from this run.');
+    Exit;
+  end;
+
+  { B's size header is the eight bytes below the pointer we were handed. }
+  before := PPtrUInt(b)[-1];
+  Say('P4c B size header BEFORE freeing A = ' + NumStr(before)
+      + ' (expect 64)');
+
+  FreeMem(a);
+
+  after := PPtrUInt(b)[-1];
+  Say('P4c B size header AFTER  freeing A = ' + NumStr(after));
+
+  if after <> before then
+  begin
+    Say('P4c PROVEN: freeing an 8-byte allocation wrote 8 bytes past its own');
+    Say('P4c 16-byte block and into the next block''s size header.');
+    Say('P4c written value = ' + Hex16(after) + ', which is A+8 = '
+        + Hex16(PtrUInt(a) + 8) + ' -- the EndAddr field of A''s free node,');
+    Say('P4c landing outside A because the node is 24 bytes and A is 16.');
+  end
+  else
+    Say('P4c NOT REPRODUCED: B''s header survived. The reasoning is wrong.');
+
+  Say('P4c B is leaked on purpose: A''s free node is correct, so the chain is');
+  Say('P4c intact and only B is spoiled. 72 bytes, once.');
+end;
+
 { ---- image helpers ------------------------------------------------------ }
 
 function MakeChecker(w, h: Integer): TFPMemoryImage;
@@ -871,6 +955,11 @@ begin
   Run('P2', @P2EventHandshake);  HeapProbe('P2');
   Run('P3', @P3Generics);        HeapProbe('P3');
   Run('P4', @P4StrUtils);        HeapProbe('P4');
+  { P4c before P4b: it is the deterministic proof and it costs three
+    allocations, where P4b is a hunt that takes thousands and ends in the
+    fault. If P4c reproduces, P4b's crash is explained without needing to
+    reach it. }
+  Run('P4c', @P4cMinBlockProof); HeapProbe('P4c');
   Run('P4b', @P4bHeapChurn);     HeapProbe('P4b');
   Run('P5', @P5BMP);             HeapProbe('P5');
   Run('P6', @P6PNG);             HeapProbe('P6');
