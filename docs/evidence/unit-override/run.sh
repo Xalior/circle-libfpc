@@ -12,6 +12,11 @@
 # The first blob is the trap. It compiles, it links, and `make fpc-contract`
 # calls it correct, while the code that was overridden is not in it.
 #
+# It then runs fpc-objlist-check.sh — the guard fpc-app.mk uses, the file
+# itself and not a copy of it — over the same object list, which must refuse
+# it. That makes this script the guard's regression test as well as the
+# compiler behaviour's.
+#
 # THIS SCRIPT NEVER WRITES INTO THE RUNTIME TREE. Every source it needs is
 # copied into its own work directory first, and the patch is applied to the
 # copy. The runtime is read from and nothing else.
@@ -124,6 +129,19 @@ for b in blob-as-recipe blob-corrected; do
   "$FPCBINUTILS/aarch64-elf-nm" -u "$out/$b.o" | sed 's/^/   /'
 done
 
+# ---------------------------------------------------------------------------
+# The guard fpc-app.mk runs before it uses that list — the shipped file, not a
+# copy of it — over the very list the first blob was built from. It has to
+# refuse it.
+# ---------------------------------------------------------------------------
+echo
+echo "== the guard, on the same list =="
+if sh "$here/../../../fpc-objlist-check.sh" "$res" "$out"; then
+  guard=accepted
+else
+  guard=refused
+fi
+
 echo
 if "$FPCBINUTILS/aarch64-elf-nm" -u "$out/blob-as-recipe.o" | grep -q probe_; then
   echo "UNEXPECTED: the recipe blob carries the override. The trap did not reproduce."
@@ -133,5 +151,10 @@ if ! "$FPCBINUTILS/aarch64-elf-nm" -u "$out/blob-corrected.o" | grep -q probe_; 
   echo "UNEXPECTED: the corrected blob does not carry the override either."
   exit 1
 fi
+if [ "$guard" != refused ]; then
+  echo "UNEXPECTED: the guard accepted an object list that drops the override."
+  exit 1
+fi
 echo "Reproduced: the recipe blob leaves only the host-kernel contract and has"
-echo "dropped the override; the corrected blob keeps it."
+echo "dropped the override; the corrected blob keeps it; and the guard refuses"
+echo "the list that produced the first."

@@ -172,43 +172,49 @@ The stamp covers `FPCRTL` and nothing else. `FPCFLAGS`, `FPC_HEAP_SIZE` and
 `FPC` are settings rather than files in the same way, so `make clean` between
 the builds when one of those is the variable.
 
-**Overriding a runtime unit from a project's own source tree looks safe and is
-not.** Put a replacement `.pp` for a unit the runtime already ships —
-`sysutils.pp`, say — earlier on the unit search path than the runtime's own
-copy, and the compiler finds it, compiles it, and recompiles every unit that
-depends on it, reporting each recompile as it happens. The build still
-succeeds. The blob still links. `fpc-contract`'s check still comes back as
-`_haltproc`, `_stack_top` and nothing else — the correct-looking result — and
-the override's own code is absent from the image regardless. What breaks is
-the link response file the compiler writes for the recompiled units: for a
-unit forced through this detour, it still names the object at the runtime's
-own unit directory, not the fresh one the compiler just wrote into the build's
-output directory, because nothing about the recompile changes what the
-compiler records as that unit's object path. A blob assembled from that list
-is quietly built from the stock unit, and every check available — a clean
-compile, a clean link, a clean contract — reports it as correct.
+**A replacement for a unit the runtime already ships is refused, and the
+message says so.** Put your own `sysutils.pp` where the compiler finds it
+before the runtime's — beside the program is enough, because the program's own
+directory is searched first — and the compiler compiles yours and recompiles
+every unit that depends on it, reporting each recompile as it happens. It
+writes a fresh object for each into the build's output directory, and it does
+not revise what it records as those units' object paths: the link response file
+still names the objects in the runtime's own unit directory. `fpc-app.mk`
+builds the blob from exactly that list, so the blob would be assembled from the
+copies the recompile was meant to replace.
 
-Detect it by contents, not by any of those checks passing: after overriding a
-runtime unit, confirm the output directory actually holds a freshly written
-object for every unit the compiler reported recompiling, and confirm the
-response file's entry for each of those units points at that fresh object
-rather than at the runtime's own unit directory. A stock path surviving in the
-list for a unit that was just recompiled is the tell.
+`fpc-objlist-check.sh` reads the list before the blob is linked and stops the
+build when it names an object of some name from elsewhere while the output
+directory holds one of that name that this compile just wrote. It names each
+unit and both paths. The output directory is emptied before every compile, so
+every object in it belongs to that compile and no timestamps are involved.
 
-`docs/evidence/unit-override/` reproduces all of this from nothing — the trap
-and the corrected build side by side — and carries the output of a run, so the
-behaviour can be read without reproducing it first.
+**Recognise the symptom in an image built before that check existed**, because
+nothing in such a build reports it. The compile is clean. The link is clean.
+`fpc-contract` comes back as `_haltproc`, `_stack_top` and nothing else — the
+correct-looking result — and the replacement's own code is absent from the
+image regardless, because the stock objects it was built from are internally
+consistent. Read it out of the build instead: for every unit the compiler said
+it recompiled, the response file's entry has to point at the fresh object in
+the output directory. A search-path object surviving in the list for a unit
+that was just recompiled is the tell.
 
-**This is a hazard of overriding, not of keeping units in a project's own
+`docs/evidence/unit-override/` reproduces all of this from nothing — the trap,
+the corrected build, and the check refusing the list — so the behaviour can be
+read without reproducing it first, and so a future compiler that changes it is
+noticed.
+
+**This is a hazard of replacing a unit, not of keeping units in a project's own
 source tree** — the latter is how this library ships `circlefpc`, `clfthreads`
 and everything beside them. One question separates the two: does the runtime
-ship a unit of that name as well? If it does, yours is an override and all of
+ship a unit of that name as well? If it does, yours is a replacement and all of
 the above applies. If it does not, yours is an addition, there is no other
-object of that name for the response file to name, and the list can only point
-at the one the compiler just wrote. `DynLibs` is the addition case: the
-`aarch64-embedded` runtime carries no `dynlibs.ppu` and no `dynlibs.o`, and a
-program that uses it without this library's copy stops at `Can't find unit
-DynLibs`. That failure, in the absence of your own file, is the test.
+object of that name for the response file to name, the list can only point at
+the one the compiler just wrote, and the check has nothing to compare and stays
+silent. `DynLibs` is the addition case: the `aarch64-embedded` runtime carries
+no `dynlibs.ppu` and no `dynlibs.o`, and a program that uses it without this
+library's copy stops at `Can't find unit DynLibs`. That failure, in the absence
+of your own file, is the test.
 
 **`ld --wrap` looks like the other way to redirect a runtime function without
 touching the source, and it cannot reach anything inside the Pascal blob.**

@@ -1,4 +1,4 @@
-# Evidence: overriding a runtime unit
+# Evidence: replacing a runtime unit
 
 [BUILDING.md](../../BUILDING.md) makes a claim strong enough to deserve a proof
 that anybody can check: a replacement for a unit the Free Pascal runtime
@@ -6,7 +6,9 @@ already ships can compile, link, and pass `make fpc-contract` while its code is
 absent from the image.
 
 This directory reproduces that, and reproduces the corrected build beside it so
-the two can be compared in one run.
+the two can be compared in one run. It then runs the build's own guard,
+`fpc-objlist-check.sh`, over the same object list, which must refuse it — so a
+run also answers whether the guard still catches the thing it was written for.
 
 ## What is in here
 
@@ -34,9 +36,10 @@ FPCBINUTILS=<directory holding aarch64-elf-as and aarch64-elf-ld> \
 ./run.sh
 ```
 
-It exits zero only when the trap reproduces AND the corrected build works. If
-either half comes out the other way it says so and exits non-zero, which is the
-answer worth having if a future compiler changes this behaviour.
+It exits zero only when the trap reproduces, the corrected build works, and the
+guard refuses the list. Any of the three coming out the other way is said
+outright and exits non-zero, which is the answer worth having if a future
+compiler changes this behaviour or the guard stops reaching it.
 
 ## What it does
 
@@ -51,6 +54,10 @@ rule `fpc-app.mk` uses — read the object list out of the compiler's link
 response file, give bare names the output directory, take anything already
 carrying a path as written. Once with any unit whose object the compiler
 freshly wrote taken from the output directory instead.
+
+Finally it runs `fpc-objlist-check.sh` over that same list. That is the file
+`fpc-app.mk` runs before it links a blob, used here rather than copied, so the
+run tests the guard the build actually has.
 
 ## What it shows
 
@@ -115,13 +122,24 @@ gone.
 The second blob differs from the first only in where five objects were taken
 from, and it carries the override.
 
+The guard reads the disagreement straight out of the same list and refuses it,
+naming each unit and both paths:
+
+```
+-- the guard, on the same list --
+  the list says   <runtime units>/sysutils.o
+  this build wrote <output directory>/sysutils.o
+```
+
 Paths above are shown as placeholders; the real ones name whichever runtime the
 run was pointed at.
 
 ## The limit of this result
 
-This is a trap of **overriding**, not of keeping units in a project's own
+This is a trap of **replacing a unit**, not of keeping units in a project's own
 source tree — which is how this library ships `circlefpc`, `clfthreads` and the
 rest. The trap needs a second object of the same name for the response file to
-keep pointing at, and a unit the runtime does not ship has none. See
-[BUILDING.md](../../BUILDING.md) for the test that separates the two cases.
+keep pointing at, and a unit the runtime does not ship has none. That is also
+why the guard cannot fire on an addition: with one object of the name, there is
+no disagreement to find. See [BUILDING.md](../../BUILDING.md) for the test that
+separates the two cases.

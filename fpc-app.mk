@@ -145,6 +145,13 @@ endif
 #    objects it built itself relative to the compile directory and RTL units
 #    with absolute paths.
 #
+#    That list is checked before it is used. It can name a unit's object on a
+#    search path while this compile has just written its own object of that
+#    name, which happens when a source replaces a unit that is already built
+#    somewhere on the unit path — and a blob assembled from that list is built
+#    from the copy the recompile was meant to replace, with nothing else
+#    reporting it. fpc-objlist-check.sh explains the case and stops the build.
+#
 # 4. Localise `main`. The compiler emits a global `main` at the same address as
 #    PASCALMAIN. Circle's own main() has that name, so the two collide at link.
 #    Nothing calls the Pascal one: a host kernel calls PASCALMAIN directly.
@@ -164,6 +171,8 @@ $(FPC_BLOB): $(FPC_PROGRAM) $(wildcard $(FPC_APP_DIR)rtl/*.pp) $(FPC_RTL_STAMP)
 		> $(abspath $(FPC_OBJDIR))/ppas.log 2>&1 || true
 	@test -f $(FPC_OBJDIR)/$(FPC_PROGNAME).o || \
 		{ echo "$(FPC_PROGNAME): assembly produced no object; see $(FPC_OBJDIR)/ppas.log"; exit 1; }
+	@set -e; res=$$(ls $(FPC_OBJDIR)/link*.res); \
+		sh $(FPC_APP_DIR)fpc-objlist-check.sh "$$res" $(FPC_OBJDIR)
 	@echo "  LD -r $@"
 	@set -e; res=$$(ls $(FPC_OBJDIR)/link*.res); \
 		objs=$$(sed -n '/^INPUT (/,/^)/p' "$$res" | grep -v '^INPUT (' | grep -v '^)'); \
