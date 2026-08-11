@@ -166,6 +166,44 @@ library cannot be reused here as it stands, however the library name is
 configured: every declaration has to lose its library name so that the symbol
 is resolved by the static link, exactly as `_haltproc` and `_stack_top` are.
 
+## `DynLibs` exists here, and it always says no
+
+Loading a library at run time is the same absent facility seen from the other
+side, and Free Pascal's `DynLibs` unit does not exist for this target at all.
+`rtl/inc/dynlibs.pas` forwards every routine to the identically named routine in
+the System unit, each operating system fills those in from its own
+`rtl/<os>/dynlibs.inc`, and there is no `rtl/embedded/dynlibs.inc` — so the
+`aarch64-embedded` System unit declares neither `TLibHandle` nor `NilHandle` nor
+`LoadLibrary`, and a program that names `DynLibs` fails to compile.
+
+That is not a missing build. There is no loader, no search path and no run-time
+relocation on bare metal, so there is nothing to implement.
+
+What there is, is a common shape of application code that asks for an optional
+library and does without it when the answer is no:
+
+```pascal
+SoundEnabled := LoadLibrary(libname) <> NilHandle;
+```
+
+Code written that way needs an answer rather than an absence: with the unit
+missing it does not compile, and with the unit present it takes its own
+no-library path and carries on. So `rtl/dynlibs.pp` supplies the whole `DynLibs`
+interface — the two `LoadLibrary` overloads and the two `SafeLoadLibrary` ones,
+`GetProcedureAddress`, `UnloadLibrary`, `GetLoadErrorStr`, the Kylix and Delphi
+spellings `FreeLibrary` and `GetProcAddress`, `TLibHandle`, `HModule`,
+`NilHandle` and `SharedSuffix` — and answers no to all of it. `LoadLibrary`
+returns `NilHandle`, every address lookup returns nil, unloading fails because
+nothing was loaded, and `SharedSuffix` is empty because no file extension here
+names anything.
+
+This is final rather than provisional. Anything that needs code from a library
+on this target links that code into the image.
+
+Nothing pulls the unit in — `circlefpc` does not, because it installs run-time
+interfaces and this installs none. It sits on the unit path `fpc-app.mk` already
+sets up, and is compiled only when a program says `uses DynLibs`.
+
 ## Unit initialisation is not compiled out
 
 `rtl/embedded/system.cfg` leaves `-SfINITFINAL` commented out, which reads like
@@ -201,6 +239,7 @@ object settles it; a host kernel calls `PASCALMAIN` directly.
 | `sysdir.inc` | not implemented |
 | Time | not implemented |
 | `TThreadManager` | implemented — see [Threading](THREADING.md) |
+| `DynLibs` | supplied by `rtl/dynlibs.pp`, and every routine in it fails. There is no loader on this target to implement |
 | Synchronous exception vectors | Circle's own; nothing is routed into Pascal |
 
 The heap is fixed at build time by `FPC_HEAP_SIZE` and there is no growth at
