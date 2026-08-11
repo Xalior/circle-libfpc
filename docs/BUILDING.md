@@ -195,6 +195,10 @@ response file's entry for each of those units points at that fresh object
 rather than at the runtime's own unit directory. A stock path surviving in the
 list for a unit that was just recompiled is the tell.
 
+`docs/evidence/unit-override/` reproduces all of this from nothing — the trap
+and the corrected build side by side — and carries the output of a run, so the
+behaviour can be read without reproducing it first.
+
 **This is a hazard of overriding, not of keeping units in a project's own
 source tree** — the latter is how this library ships `circlefpc`, `clfthreads`
 and everything beside them. One question separates the two: does the runtime

@@ -1,0 +1,79 @@
+--- a/sysutils.pp
++++ b/sysutils.pp
+@@ -57,11 +57,22 @@
+   {$i sysutils.inc}
+ 
+ {****************************************************************************
++                override probe: external C hooks (experiment only)
++****************************************************************************}
++function probe_open(p: PAnsiChar; flags: longint): longint; cdecl; external name 'probe_open';
++function probe_read(h: longint; buf: pointer; count: longint): longint; cdecl; external name 'probe_read';
++function probe_write(h: longint; buf: pointer; count: longint): longint; cdecl; external name 'probe_write';
++function probe_close(h: longint): longint; cdecl; external name 'probe_close';
++function probe_seek(h: longint; offs: longint; origin: longint): longint; cdecl; external name 'probe_seek';
++function probe_findfirst(p: PAnsiChar; attr: longint): longint; cdecl; external name 'probe_findfirst';
++function probe_direxists(p: PAnsiChar): longint; cdecl; external name 'probe_direxists';
++
++{****************************************************************************
+                               File Functions
+ ****************************************************************************}
+ function FileOpen(const FileName: RawByteString; Mode: Integer): THandle;
+ begin
+-  result := -1;
++  result := probe_open(PAnsiChar(FileName), Mode);
+ end;
+ 
+ 
+@@ -97,29 +108,30 @@
+ 
+ function FileRead(Handle: THandle; Out Buffer; Count: LongInt): LongInt;
+ begin
+-  result := -1;
++  result := probe_read(Handle, @Buffer, Count);
+ end;
+ 
+ 
+ function FileWrite(Handle: THandle; const Buffer; Count: LongInt): LongInt;
+ begin
+-  result := -1;
++  result := probe_write(Handle, @Buffer, Count);
+ end;
+ 
+ 
+ function FileSeek(Handle: THandle; FOffset, Origin: LongInt) : LongInt;
+ begin
+-  result := -1;
++  result := probe_seek(Handle, FOffset, Origin);
+ end;
+ 
+ function FileSeek(Handle: THandle; FOffset: Int64; Origin: Longint): Int64;
+ begin
+-  result := -1;
++  result := probe_seek(Handle, FOffset, Origin);
+ end;
+ 
+ 
+ procedure FileClose(Handle: THandle);
+ begin
++  probe_close(Handle);
+ end;
+ 
+ 
+@@ -161,7 +173,7 @@
+ 
+ Function InternalFindFirst (Const Path : RawByteString; Attr : Longint; out Rslt : TAbstractSearchRec; var Name: RawByteString) : Longint;
+ begin
+-  result := -1;
++  result := probe_findfirst(PAnsiChar(Path), Attr);
+ end;
+ 
+ 
+@@ -211,7 +223,7 @@
+ 
+ function DirectoryExists(const Directory: RawByteString; FollowLink : Boolean): Boolean;
+ begin
+-  result := false;
++  result := probe_direxists(PAnsiChar(Directory)) <> 0;
+ end;
+ 
+ 
