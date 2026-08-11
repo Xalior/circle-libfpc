@@ -162,6 +162,29 @@ So when the runtime is the variable, `make clean` between the builds, and
 compare the image hashes before believing either of them. Two identical hashes
 mean the second build did not happen, not that the runtime made no difference.
 
+**Overriding a runtime unit from a project's own source tree looks safe and is
+not.** Put a replacement `.pp` for a unit the runtime already ships —
+`sysutils.pp`, say — earlier on the unit search path than the runtime's own
+copy, and the compiler finds it, compiles it, and recompiles every unit that
+depends on it, reporting each recompile as it happens. The build still
+succeeds. The blob still links. `fpc-contract`'s check still comes back as
+`_haltproc`, `_stack_top` and nothing else — the correct-looking result — and
+the override's own code is absent from the image regardless. What breaks is
+the link response file the compiler writes for the recompiled units: for a
+unit forced through this detour, it still names the object at the runtime's
+own unit directory, not the fresh one the compiler just wrote into the build's
+output directory, because nothing about the recompile changes what the
+compiler records as that unit's object path. A blob assembled from that list
+is quietly built from the stock unit, and every check available — a clean
+compile, a clean link, a clean contract — reports it as correct.
+
+Detect it by contents, not by any of those checks passing: after overriding a
+runtime unit, confirm the output directory actually holds a freshly written
+object for every unit the compiler reported recompiling, and confirm the
+response file's entry for each of those units points at that fresh object
+rather than at the runtime's own unit directory. A stock path surviving in the
+list for a unit that was just recompiled is the tell.
+
 Two targets are worth knowing:
 
 ```sh

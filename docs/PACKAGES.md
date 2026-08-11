@@ -150,8 +150,13 @@ this target's RTL has.
 Two practical limits:
 
 - **Every image goes through a stream, and on this target that stream must be a
-  memory stream.** The twelve `rtl_do_*` file hooks are unassigned, so
-  `TFileStream` has nothing underneath it.
+  memory stream.** `TFileStream` has nothing underneath it: it calls
+  `SysUtils`'s `FileOpen`, `FileCreate`, `FileRead`, `FileWrite`, `FileSeek`
+  and `FileClose`, and `rtl/embedded/sysutils.pp` hard-codes that whole family
+  to report failure, with no installable hook of any kind on it. The twelve
+  `rtl_do_*` file hooks are unassigned too, but that is a different gap —
+  they serve only the System unit's typed and untyped `File` I/O, which
+  `TFileStream` never goes near.
 - **The decoders want heap.** Deflate takes a window, a hash table and an output
   buffer; the JPEG decoder builds component and coefficient buffers. The heap is
   a fixed BSS block sized at build time with `FPC_HEAP_SIZE` and it does not
