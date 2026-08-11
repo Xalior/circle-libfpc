@@ -100,10 +100,18 @@ is ever produced, and the heap looks perfect for as long as you care to run it.
 It takes MIXED sizes. A test that allocates 64 bytes ten thousand times proves
 nothing about it.
 
-Nothing in this library can work around it: `MinBlock` governs splits inside
-the allocator, so no wrapper outside the allocator can stop a 16-byte remainder
-being created. The one-line correction — `MinBlock` at least
-`SizeOf(THeapBlock)` — belongs in the runtime source, which is upstream's.
+**No wrapper around `heapmgr` can help**, because `MinBlock` governs splits
+inside it and a wrapper sits outside. The one-line correction — `MinBlock` at
+least `SizeOf(THeapBlock)` — belongs in the runtime source, which is upstream's.
+
+**Replacing `heapmgr` is a different matter, and it is available.** The memory
+manager is an installable interface on this target — that is the whole premise
+of the two-symbol contract above — so a library may install handlers of its
+own over the world's allocator rather than wrap the runtime's. That would end
+this defect, and the need for a lock around the runtime's allocator, in one
+move. It is a decision with costs of its own, and it has not been taken. Do not
+read this section as the project waiting on upstream.
+
 `examples/minblock/` demonstrates both paths in a single-core program with no
 threads and no scheduler.
 
