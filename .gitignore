@@ -1,0 +1,24 @@
+# Build products.
+*.o
+*.d
+*.a
+*.elf
+*.img
+*.lst
+*.map
+
+# Per-board object tree for the archive (build/rpi3, build/rpi4, build/rpi5).
+/build/
+
+# Application blob trees, built by fpc-app.mk beside each consumer.
+fpcblob/
+
+# The throwaway target name Circle's Rules.mk attaches its own link rule to.
+.circle-unused.*
+
+# THE CIRCLE WORLDS ARE NOT SOURCE. Each is gigabytes of configured, built
+# framework plus newlib and libc++, produced by circle-libsdl2's `make deps`
+# and reproducible from its pins. Where they come from is docs/BUILDING.md.
+/circle-stdlib-rpi3/
+/circle-stdlib-rpi4/
+/circle-stdlib-rpi5/
