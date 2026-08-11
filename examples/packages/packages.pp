@@ -34,8 +34,8 @@ uses
     the widestring manager held before clfstrings filled it in. }
   clfstrings,
   SysUtils, Classes,
-  { The four packages under test, and the fcl-image readers and writers
-    SpecBAS names. }
+  { The four packages under test, and the fcl-image readers and writers an
+    application is most likely to want. }
   SyncObjs,
   Generics.Collections,
   StrUtils,

@@ -37,15 +37,19 @@ include $(CIRCLESTDLIBHOME)/Config.mk
 TARGET      = kernel-clf-pkg
 FPC_PROGRAM = packages.pp
 
-# THE HEAP IS BIGGER THAN THE LADDER'S, AND ON PURPOSE.
+# THE HEAP IS THE LIBRARY DEFAULT, 4 MB, AND THAT IS MEASURED RATHER THAN
+# GUESSED.
 #
-# The PNG writer runs paszlib's deflate, which takes a window, a hash table and
-# an output buffer of its own, and the JPEG decoder builds its own component
-# and coefficient buffers. 4 MB is the library default and it is sized for a
-# program that only allocates strings and objects. The heap is a BSS block
-# fixed at build time with no growth at run time, so it is set here rather than
-# discovered on the board.
-FPC_HEAP_SIZE = 16777216
+# It was 16 MB, on the assumption that deflate's window and hash table and the
+# JPEG decoder's component buffers would want room. They do not: running every
+# rung reports a peak of 301,536 bytes through GetFPCHeapStatus, so 4 MB leaves
+# a factor of thirteen. The rungs print that figure on every boot, so the
+# margin is checkable rather than asserted.
+#
+# It is back at the default for a second reason. The heap is a BSS block fixed
+# at build time, and its size was the one structural difference between this
+# image and the ladder, which boots and passes on the same library. A
+# difference that is not earning anything is a difference worth not having.
 
 OBJS = main.o kernel.o
 
