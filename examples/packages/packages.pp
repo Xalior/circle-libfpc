@@ -195,15 +195,58 @@ end;
 
 { ---- heap, before and after the image rungs ---------------------------- }
 
-procedure SayHeap(const When: AnsiString);
+{ GetFPCHeapStatus IS A STUB ON THIS TARGET AND ALWAYS RETURNS ZEROS.
+
+  rtl/embedded/heapmgr.pp implements it as FillChar(Result, SizeOf(Result), 0),
+  with the comment "avoid that programs crash due to a heap status request".
+  So is GetHeapStatus. There is no heap accounting on this target to ask for --
+  the same shape as IsMemoryManagerSet, which is compiled to `mov w0, wzr; ret`
+  and reports nothing either.
+
+  The figures are printed anyway, once, because a reader who does not know that
+  will otherwise go looking for the heap numbers and find none. }
+procedure SayHeapStatusIsAStub;
 var
   h: TFPCHeapStatus;
 begin
   h := GetFPCHeapStatus;
-  Say('HEAP ' + When + ': used=' + NumStr(h.CurrHeapUsed)
+  Say('HEAP GetFPCHeapStatus: used=' + NumStr(h.CurrHeapUsed)
       + ' free=' + NumStr(h.CurrHeapFree)
       + ' size=' + NumStr(h.CurrHeapSize)
       + ' maxused=' + NumStr(h.MaxHeapUsed));
+  Say('HEAP all zeros is CORRECT: heapmgr.pp implements it as FillChar(0) on');
+  Say('HEAP this target. There is no heap accounting here to ask for.');
+end;
+
+{ ---- the heap chain probe ----------------------------------------------
+
+  heapmgr keeps its free list INSIDE the free memory: a free block's first
+  twenty-four bytes are Size, Next and EndAddr, and an allocated block carries
+  its size in the eight bytes below the pointer you were given. So a write one
+  byte past an allocation lands in a neighbour's header, and the damage is not
+  found until something walks the chain -- which can be thousands of
+  allocations later, in a rung that did nothing wrong.
+
+  This probe walks the chain deliberately, at a named moment. The large request
+  is the point of it: SysGetMem walks the free list until it finds a block big
+  enough, so asking for something big walks a long way through it. A chain that
+  has already been damaged faults HERE, after a line naming the last rung that
+  ran, instead of somewhere later that says nothing about the cause. }
+procedure HeapProbe(const After: AnsiString);
+var
+  a, b, c: pointer;
+begin
+  Say('HEAP probing the free chain after ' + After + ' ...');
+  a := GetMem(64);
+  b := GetMem(4096);
+  c := GetMem(262144);          { big enough to walk deep into the chain }
+  FreeMem(b);
+  FreeMem(a);
+  FreeMem(c);
+  { And once more, so the coalescing path runs on the blocks just returned. }
+  a := GetMem(131072);
+  FreeMem(a);
+  Say('HEAP chain intact after ' + After);
 end;
 
 { ---- P1: SyncObjs, TCriticalSection ------------------------------------ }
@@ -397,6 +440,128 @@ begin
   Say('P4 OK all StrUtils calls returned');
 end;
 
+{ ---- P4b: the heap on its own, with no image code anywhere near it ------
+
+  The question this answers: does heapmgr's free list break under ordinary
+  mixed-size churn on this target, or is something writing where it should not?
+  Those need separating, because the fault looks identical either way -- a
+  chain walk into a wild address, thousands of allocations after the damage.
+
+  So this rung is deliberately harder than anything the rest of the program
+  does, and contains no image code, no strings and no library calls: allocate
+  blocks of many different sizes, fill every one with a pattern derived from
+  its own index, free them in an order that is not the order they were taken
+  in, and check every byte back before each free. Sizes straddle heapmgr's
+  MinBlock of 16 and its split threshold, because splitting a block and
+  coalescing it back is the code the fault appears in.
+
+  A guard failure names an overrun by this rung itself, which would mean the
+  allocator handed out overlapping memory. Silence here plus a fault later
+  means the allocator is sound under load and something else is doing the
+  writing. }
+
+const
+  ChurnLive   = 192;
+  ChurnRounds = 24;
+
+var
+  ChurnSeed: longword = 2463534242;
+
+function ChurnRand: longword;
+begin
+  { xorshift32 -- no library call, and the same sequence on every board. }
+  ChurnSeed := ChurnSeed xor (ChurnSeed shl 13);
+  ChurnSeed := ChurnSeed xor (ChurnSeed shr 17);
+  ChurnSeed := ChurnSeed xor (ChurnSeed shl 5);
+  Result := ChurnSeed;
+end;
+
+procedure P4bHeapChurn;
+var
+  p: array[0..ChurnLive - 1] of PByte;
+  sz: array[0..ChurnLive - 1] of longint;
+  tag: array[0..ChurnLive - 1] of byte;
+  i, j, k, r, n: longint;
+  bad, total, peak, live: longint;
+  q: PByte;
+begin
+  Say('P4b start: heap churn, mixed sizes, no image code, guard bytes checked');
+
+  for i := 0 to ChurnLive - 1 do
+  begin
+    p[i] := nil;
+    sz[i] := 0;
+  end;
+  bad := 0; total := 0; peak := 0; live := 0;
+
+  for r := 1 to ChurnRounds do
+  begin
+    for k := 1 to ChurnLive do
+    begin
+      i := longint(ChurnRand mod ChurnLive);
+
+      if p[i] <> nil then
+      begin
+        { Check every byte back before letting it go. }
+        q := p[i];
+        for j := 0 to sz[i] - 1 do
+          if q[j] <> tag[i] then
+          begin
+            Inc(bad);
+            Break;
+          end;
+        FreeMem(p[i]);
+        p[i] := nil;
+        Dec(live);
+        Continue;
+      end;
+
+      { Sizes that straddle MinBlock (16) and run up past a page, so the
+        split-and-coalesce path is exercised at both ends. }
+      case ChurnRand mod 5 of
+        0: n := 1 + longint(ChurnRand mod 24);
+        1: n := 25 + longint(ChurnRand mod 200);
+        2: n := 256 + longint(ChurnRand mod 2048);
+        3: n := 4096 + longint(ChurnRand mod 8192);
+      else
+        n := 1 + longint(ChurnRand mod 65536);
+      end;
+
+      p[i] := GetMem(n);
+      if p[i] = nil then
+      begin
+        Say('P4b GetMem(' + NumStr(n) + ') returned nil at round ' + NumStr(r));
+        Continue;
+      end;
+
+      sz[i] := n;
+      tag[i] := byte(i) xor $A5;
+      FillChar(p[i]^, n, tag[i]);
+      Inc(live);
+      Inc(total);
+      if live > peak then
+        peak := live;
+    end;
+  end;
+
+  for i := 0 to ChurnLive - 1 do
+    if p[i] <> nil then
+    begin
+      q := p[i];
+      for j := 0 to sz[i] - 1 do
+        if q[j] <> tag[i] then
+        begin
+          Inc(bad);
+          Break;
+        end;
+      FreeMem(p[i]);
+      p[i] := nil;
+    end;
+
+  Say('P4b OK ' + NumStr(total) + ' allocations, peak ' + NumStr(peak)
+      + ' live, corrupted blocks=' + NumStr(bad) + ' (expect 0)');
+end;
+
 { ---- image helpers ------------------------------------------------------ }
 
 function MakeChecker(w, h: Integer): TFPMemoryImage;
@@ -487,13 +652,22 @@ var
   w: TFPWriterPNG;
   r: TFPReaderPNG;
 begin
+  { Announced step by step. The previous boot printed "P6 start" and then
+    faulted, which narrows it to somewhere in the next six statements and no
+    further. These lines cost nothing and turn that into a name. }
   Say('P6 start: fcl-image, PNG round trip (deflate and inflate, paszlib)');
+  Say('P6   building a 16x16 checker ...');
   src := MakeChecker(16, 16);
+  Say('P6   creating the destination image ...');
   dst := TFPMemoryImage.Create(0, 0);
+  Say('P6   creating the stream ...');
   ms := TMemoryStream.Create;
+  Say('P6   creating TFPWriterPNG ...');
   w := TFPWriterPNG.Create;
+  Say('P6   creating TFPReaderPNG ...');
   r := TFPReaderPNG.Create;
   try
+    Say('P6   SaveToStream: this is where deflate runs ...');
     src.SaveToStream(ms, w);
     Say('P6 deflated to ' + NumStr(ms.Size) + ' bytes');
     ms.Position := 0;
@@ -683,18 +857,25 @@ begin
   Say('SyncObjs, Generics.Collections, StrUtils, fcl-image');
   Say('');
 
-  Run('P0', @P0StringManager);
-  SayHeap('at start');
-  Run('P1', @P1CriticalSection);
-  Run('P2', @P2EventHandshake);
-  Run('P3', @P3Generics);
-  Run('P4', @P4StrUtils);
-  SayHeap('before the image rungs');
-  Run('P5', @P5BMP);
-  Run('P6', @P6PNG);
-  Run('P7', @P7JPEG);
-  Run('P8', @P8GIF);
-  SayHeap('after the image rungs');
+  SayHeapStatusIsAStub;
+
+  { A probe after EVERY rung. heapmgr's free list lives inside the free memory,
+    so a stray write is silent until something walks far enough to meet it --
+    which is why the last boot died entering P6 having been damaged who knows
+    where. Each probe walks the chain on purpose, so the fault lands
+    immediately after a line naming the rung that ran, and the rung that broke
+    it is the one before the last "chain intact". }
+  HeapProbe('startup');
+  Run('P0', @P0StringManager);   HeapProbe('P0');
+  Run('P1', @P1CriticalSection); HeapProbe('P1');
+  Run('P2', @P2EventHandshake);  HeapProbe('P2');
+  Run('P3', @P3Generics);        HeapProbe('P3');
+  Run('P4', @P4StrUtils);        HeapProbe('P4');
+  Run('P4b', @P4bHeapChurn);     HeapProbe('P4b');
+  Run('P5', @P5BMP);             HeapProbe('P5');
+  Run('P6', @P6PNG);             HeapProbe('P6');
+  Run('P7', @P7JPEG);            HeapProbe('P7');
+  Run('P8', @P8GIF);             HeapProbe('P8');
   Run('P9', @P9AutoResetProbe);
 
   Say('');
