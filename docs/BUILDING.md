@@ -210,6 +210,23 @@ at the one the compiler just wrote. `DynLibs` is the addition case: the
 program that uses it without this library's copy stops at `Can't find unit
 DynLibs`. That failure, in the absence of your own file, is the test.
 
+**`ld --wrap` looks like the other way to redirect a runtime function without
+touching the source, and it cannot reach anything inside the Pascal blob.**
+`fpc-app.mk` partially links the whole program into one object with
+`aarch64-elf-ld -r` before the kernel link, and that first `ld -r` resolves
+every reference between the program's own objects. Applied to that first
+`ld -r`, `--wrap` works: it produces the expected `U
+__wrap_SYSUTILS_$$_FILEOPEN$...`. Applied to anything after — a second
+`ld -r` over the already-combined blob, or the kernel link itself — nothing
+happens: the symbol has already been bound, and `readelf -r` finds no
+relocation left naming it to wrap. It does not complain either way, which is
+what makes it expensive: the build succeeds, the link succeeds, and the
+wrapper is simply never called. Even at its best, this means naming Free
+Pascal's mangled symbols in a makefile, and it only ever catches calls that
+cross an object boundary — a call from inside a unit to its own function,
+such as `sysutils` calling its own `FileOpen`, is never wrapped, working or
+not.
+
 Two targets are worth knowing:
 
 ```sh
