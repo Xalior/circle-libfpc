@@ -185,6 +185,17 @@ response file's entry for each of those units points at that fresh object
 rather than at the runtime's own unit directory. A stock path surviving in the
 list for a unit that was just recompiled is the tell.
 
+**This is a hazard of overriding, not of keeping units in a project's own
+source tree** — the latter is how this library ships `circlefpc`, `clfthreads`
+and everything beside them. One question separates the two: does the runtime
+ship a unit of that name as well? If it does, yours is an override and all of
+the above applies. If it does not, yours is an addition, there is no other
+object of that name for the response file to name, and the list can only point
+at the one the compiler just wrote. `DynLibs` is the addition case: the
+`aarch64-embedded` runtime carries no `dynlibs.ppu` and no `dynlibs.o`, and a
+program that uses it without this library's copy stops at `Can't find unit
+DynLibs`. That failure, in the absence of your own file, is the test.
+
 Two targets are worth knowing:
 
 ```sh
