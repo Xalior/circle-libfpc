@@ -150,6 +150,18 @@ Settings a consumer is likely to want:
 | `FPC`, `FPCRTL`, `FPCBINUTILS` | override the Free Pascal toolchain search |
 | `FPCLIB` | override the archive this kernel links |
 
+**Changing `FPCRTL` does not rebuild the blob, and that can hand you a false
+result.** The blob rule depends on the program source and on `rtl/*.pp`, not on
+which runtime those are compiled against, so pointing `FPCRTL` at a different
+runtime and building again produces the SAME object — and an image identical to
+the one before it, byte for byte, reported as a successful build. Comparing two
+runtimes is exactly when someone does this, and a null result then reads as a
+finding.
+
+So when the runtime is the variable, `make clean` between the builds, and
+compare the image hashes before believing either of them. Two identical hashes
+mean the second build did not happen, not that the runtime made no difference.
+
 Two targets are worth knowing:
 
 ```sh

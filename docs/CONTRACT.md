@@ -61,6 +61,52 @@ The fix is one unit: `heapmgr`, whose initialization section calls
 `SetMemoryManager` and hands the compiler-emitted `__fpc_initialheap` block to
 the allocator.
 
+### The allocator overruns a smallest-size block on 64-bit
+
+**This is a defect in the runtime this library builds against, not in this
+library, and it is not patched here.** It is stated because a program on this
+target will hit it and the symptom points nowhere near the cause.
+
+`rtl/embedded/heapmgr.pp` sets `MinBlock = 16`, while its own free-list node is
+24 bytes on a 64-bit target:
+
+```pascal
+THeapBlock = record
+  Size: ptruint;      // offset 0
+  Next: PHeapBlock;   // offset 8
+  EndAddr: pointer;   // offset 16..23
+end;
+```
+
+`InternalFreeMem` writes all three fields whatever size it was handed, so
+returning a 16-byte block writes eight bytes past the end of it, into whatever
+is next — normally a live allocation. Three paths reach it with exactly 16:
+`SysFreeMem`, which clamps its size up to `MinBlock`; `SysGetMem`'s split,
+which accepts a remainder of exactly `MinBlock`; and `GetAlignedMem`, which
+frees its alignment gap. On a 32-bit target the node is 12 bytes and 16 is
+safe, which is where the constant came from.
+
+**The damage is silent and it surfaces somewhere else.** The eight bytes are
+traded with a neighbouring allocation, so either the neighbour is spoiled or
+the free block's own `Next` is overwritten by the neighbour's data. Nothing
+fails at the moment of the overrun. The next walk of the free list loads
+whatever the neighbour happened to hold and follows it as a pointer, so the
+fault lands in `SysGetMem` or `InternalFreeMem` at an address made of the
+neighbour's data — and the offending code is long gone.
+
+**A uniform-size allocation test cannot find this, by construction.** Allocate
+and free the same few sizes and the splits come out even, no 16-byte remainder
+is ever produced, and the heap looks perfect for as long as you care to run it.
+It takes MIXED sizes. A test that allocates 64 bytes ten thousand times proves
+nothing about it.
+
+Nothing in this library can work around it: `MinBlock` governs splits inside
+the allocator, so no wrapper outside the allocator can stop a 16-byte remainder
+being created. The one-line correction — `MinBlock` at least
+`SizeOf(THeapBlock)` — belongs in the runtime source, which is upstream's.
+`examples/minblock/` demonstrates both paths in a single-core program with no
+threads and no scheduler.
+
 **The thread manager is a set of error handlers.** With the THREADING feature
 enabled, `CurrentTM` starts as the runtime's `NoThreadManager`, whose every
 handler reports a runtime error. It is a `.data` record, not a set of undefined
