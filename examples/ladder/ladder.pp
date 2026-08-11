@@ -291,6 +291,16 @@ var
   ok: boolean;
 begin
   Say('R4 start: GetMem / FreeMem against the compiler-emitted heap block');
+
+  { The heap's geometry, said out loud. It is a BSS block the compiler emits
+    and heapmgr registers, sized at link time and never grown, so a program
+    that runs out has to be given a bigger one rather than wait. Printing it
+    costs a line and turns "an allocation returned nil" into something a
+    reader can size up on the spot. }
+  Say('R4 heap block  = ' + Hex16(PtrUInt(@InitialHeapBlock)) +
+      ' .. ' + Hex16(PtrUInt(@InitialHeapBlock) + PtrUInt(InitialHeapSize)));
+  Say('R4 heap size   = ' + NumStr(InitialHeapSize) + ' bytes');
+
   p := GetMem(CLF_HEAP_PROBE);
   ok := p <> nil;
   if ok then

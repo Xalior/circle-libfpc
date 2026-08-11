@@ -519,12 +519,33 @@ begin
 end;
 
 initialization
-  { The heap lock first: the thread manager's own handlers allocate, and a
-    thread may be created before the next line of the program runs. This is
-    also why circlefpc names heapmgr ahead of this unit -- unit initialization
-    runs in the order the uses clause gives, so the manager being wrapped here
-    is already installed. }
-  CLFInstallHeapLock;
+  {   ******************************************************************
+      THE HEAP LOCK IS DISABLED, ON PURPOSE, AND MUST BE PUT BACK.
+      ******************************************************************
+
+      This is a DIAGNOSTIC STATE, not a decision. A memory manager wrapper
+      is one of the suspects in a heap corruption seen on a large image, and
+      the fastest way to clear it or convict it is to take it out for one
+      boot. Nothing else changed.
+
+      WHAT THIS COSTS WHILE IT IS OUT. heapmgr walks a free list with no lock
+      of its own. With the wrapper gone, two cores allocating at once corrupt
+      that list -- silently, because the damage is written into the free
+      memory itself and is not found until something walks far enough. Any
+      program that starts a thread AND allocates on more than one core is
+      unsafe in this state. The single-threaded case is unaffected.
+
+      PUT IT BACK by uncommenting the call below, the moment the experiment
+      has reported. Restoring it is the whole of the change.
+
+      Why the lock goes first when it is in: the thread manager's own
+      handlers allocate, and a thread may be created before the next line of
+      the program runs. That is also why circlefpc names heapmgr ahead of
+      this unit -- unit initialization runs in the order the uses clause
+      gives, so the manager being wrapped is already installed. }
+
+  // CLFInstallHeapLock;      { <-- RESTORE THIS. See the note above. }
+
   CLFInstallThreadManager;
 
 end.

@@ -49,6 +49,14 @@ never "was a manager installed" but "does the record hold real addresses",
 because the failure mode is a branch through a nil field rather than a flag
 being false.
 
+`GetHeapStatus` and `GetFPCHeapStatus` cannot tell you anything either, and for
+the same family of reason. `rtl/embedded/heapmgr.pp` implements both as
+`FillChar(Result, SizeOf(Result), 0)`, with the comment "avoid that programs
+crash due to a heap status request". So a program asking how much heap it has
+used is answered with zeros, and those zeros are correct behaviour rather than
+a symptom of anything. **There is no heap accounting on this target.** Code
+that logs heap usage, or decides anything from it, silently decides from zero.
+
 The fix is one unit: `heapmgr`, whose initialization section calls
 `SetMemoryManager` and hands the compiler-emitted `__fpc_initialheap` block to
 the allocator.
