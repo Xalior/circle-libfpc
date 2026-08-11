@@ -157,6 +157,23 @@ Two practical limits:
   a fixed BSS block sized at build time with `FPC_HEAP_SIZE` and it does not
   grow, so an image size that works has to be paid for at link time.
 
+And one that is not this package's fault but which this package is the most
+likely thing to expose. `fcl-image`'s decoders are the heaviest mixed-size
+allocator anything here runs, and mixed sizes are exactly what the allocator
+defect in [the contract](CONTRACT.md) needs — a PNG round trip was the first
+thing to meet it. Nothing about that is specific to images; it is simply the
+workload that finds it first.
+
+**It is not true that the only remedy is upstream's.** No wrapper *around*
+heapmgr can help, because `MinBlock` governs splits inside it. But the memory
+manager is an installable interface on this target, so a library may **replace**
+heapmgr rather than wrap it — `SetMemoryManager` with handlers over the
+circle-stdlib world's own allocator, which is already linked into every image
+here and is spinlock-guarded across cores. That would end both this defect and
+the need for a separate heap lock. It is a real route and a real decision, and
+it has not been taken: recorded here so that the next person weighing it knows
+the option exists rather than assuming the project is blocked on upstream.
+
 ## Proving it on the board
 
 `examples/packages/` is a bootable kernel that runs all four, one rung at a
