@@ -13,6 +13,10 @@
 # Application blob trees, built by fpc-app.mk beside each consumer.
 fpcblob/
 
+# The record of which runtime a blob was compiled against, written beside the
+# blob tree by fpc-app.mk.
+*.rtl-stamp
+
 # The throwaway target name Circle's Rules.mk attaches its own link rule to.
 .circle-unused.*
 

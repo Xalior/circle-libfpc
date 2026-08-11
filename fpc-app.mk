@@ -92,6 +92,34 @@ FPC_PROGDIR  = $(dir $(abspath $(FPC_PROGRAM)))
 FPC_PROGNAME = $(basename $(notdir $(FPC_PROGRAM)))
 FPC_BLOB     = $(FPC_OBJDIR)/$(FPC_PROGNAME)-all.o
 
+# WHICH RUNTIME THE BLOB WAS COMPILED AGAINST, AS A FILE.
+#
+# The blob's prerequisites are files: the program and this library's own rtl/.
+# FPCRTL is a setting rather than a file, so pointing it at a different runtime
+# leaves every prerequisite untouched and make finds nothing to do — the second
+# build keeps the first build's blob and produces an image identical to it,
+# byte for byte, and reports success. Comparing two runtimes is precisely when
+# someone changes this setting, so the null result arrives looking like an
+# answer.
+#
+# This stamp file holds the runtime the blob was last compiled against. It is a
+# prerequisite of the blob, and it is rewritten ONLY when the value it holds
+# differs from the current FPCRTL — so a changed runtime makes it newer than
+# the blob and forces the compile, and an unchanged runtime leaves its
+# timestamp alone and rebuilds nothing.
+#
+# It sits beside the blob directory rather than inside it, because the blob
+# recipe empties that directory before it compiles. `make clean` removes it.
+FPC_RTL_STAMP = $(FPC_OBJDIR).rtl-stamp
+
+.PHONY: fpc-rtl-force
+fpc-rtl-force:
+
+$(FPC_RTL_STAMP): fpc-rtl-force
+	@printf '%s\n' '$(abspath $(FPCRTL))' | cmp -s - $@ || \
+		{ printf '%s\n' '$(abspath $(FPCRTL))' > $@; \
+		  echo "  FPCRTL $(abspath $(FPCRTL))"; }
+
 ifeq ($(strip $(FPC)),)
 $(error no aarch64-embedded Free Pascal cross compiler found. Set FPC, or RAPI_FPC_DIR)
 endif
@@ -123,7 +151,7 @@ endif
 .PHONY: fpc-blob
 fpc-blob: $(FPC_BLOB)
 
-$(FPC_BLOB): $(FPC_PROGRAM) $(wildcard $(FPC_APP_DIR)rtl/*.pp)
+$(FPC_BLOB): $(FPC_PROGRAM) $(wildcard $(FPC_APP_DIR)rtl/*.pp) $(FPC_RTL_STAMP)
 	@echo "  FPC   $(FPC_PROGRAM) -> $@"
 	@rm -rf $(FPC_OBJDIR)
 	@mkdir -p $(FPC_OBJDIR)
@@ -147,7 +175,7 @@ $(FPC_BLOB): $(FPC_PROGRAM) $(wildcard $(FPC_APP_DIR)rtl/*.pp)
 # directory, so it gets its own target and clean is given it as a prerequisite.
 .PHONY: fpc-clean
 fpc-clean:
-	@rm -rf $(FPC_OBJDIR)
+	@rm -rf $(FPC_OBJDIR) $(FPC_RTL_STAMP)
 
 clean: fpc-clean
 

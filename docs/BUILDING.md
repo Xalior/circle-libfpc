@@ -150,17 +150,27 @@ Settings a consumer is likely to want:
 | `FPC`, `FPCRTL`, `FPCBINUTILS` | override the Free Pascal toolchain search |
 | `FPCLIB` | override the archive this kernel links |
 
-**Changing `FPCRTL` does not rebuild the blob, and that can hand you a false
-result.** The blob rule depends on the program source and on `rtl/*.pp`, not on
-which runtime those are compiled against, so pointing `FPCRTL` at a different
-runtime and building again produces the SAME object — and an image identical to
-the one before it, byte for byte, reported as a successful build. Comparing two
-runtimes is exactly when someone does this, and a null result then reads as a
-finding.
+**Changing `FPCRTL` rebuilds the blob.** The rule takes a stamp file as a
+prerequisite — `fpcblob.rtl-stamp`, written beside the blob directory — which
+holds the runtime the blob was last compiled against and is rewritten only when
+that value changes. So a build against a different runtime is a build, and an
+unchanged runtime still rebuilds nothing.
 
-So when the runtime is the variable, `make clean` between the builds, and
-compare the image hashes before believing either of them. Two identical hashes
-mean the second build did not happen, not that the runtime made no difference.
+**Older images do not have that guarantee, and the symptom is worth
+recognising.** The rule used to depend on the program source and on `rtl/*.pp`
+and not on which runtime those were compiled against. Pointing `FPCRTL` at a
+different runtime and building again then produced the SAME object, and an
+image identical to the one before it, byte for byte, reported as a successful
+build. Comparing two runtimes is exactly when someone changes this setting, so
+the null result arrived looking like an answer. Two identical hashes from two
+runtimes mean the second build did not happen, not that the runtime made no
+difference — so compare the hashes of any pair of images built before this
+stamp existed, and rebuild the pair with a `make clean` between them if they
+match.
+
+The stamp covers `FPCRTL` and nothing else. `FPCFLAGS`, `FPC_HEAP_SIZE` and
+`FPC` are settings rather than files in the same way, so `make clean` between
+the builds when one of those is the variable.
 
 **Overriding a runtime unit from a project's own source tree looks safe and is
 not.** Put a replacement `.pp` for a unit the runtime already ships —
