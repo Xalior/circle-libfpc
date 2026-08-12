@@ -101,6 +101,21 @@ nothing preempts them, and no routine in the file layer gives the core away.
 `CircleOpenFileCount` reports how many entries are taken, which is what a
 program asks to see that closing a file gave its entry back.
 
+**A truncate puts the descriptor where the cut needs it first, and that is not
+tidiness.** The truncate underneath the file service remembers where the
+descriptor was, seeks to the new length, cuts the file, and seeks back to where
+it was — and on this filesystem a seek past the end of a file that is open for
+writing extends the file to that offset rather than stopping at the end. The
+service seeks before every transfer and leaves the descriptor where the
+transfer ended, so a program that reads near the end of a file and then cuts it
+short would have the file re-grown to exactly its old length, with success
+reported and the card unchanged. The layer therefore writes no bytes at the new
+length before asking for the cut — the service has no seek of its own, so a
+transfer is the only lever on the descriptor, and a write cannot be refused by a
+handle that is open for writing. This is a defect in the layers below and it is
+theirs to fix; both calls here are the service's own, in the order this board
+needs them.
+
 **`Erase` refuses a directory.** Unlink on this board is the card's own, which
 removes an empty directory as readily as a file, and a Pascal program that
 writes `Erase` means a file. So the layer asks about the name first and reports

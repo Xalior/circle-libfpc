@@ -401,7 +401,9 @@ var
   S : TStamp;
   P : file;
   Got : Int64;
-  ReadOk, SeekOk, TruncOk, PascalOk, Good : Boolean;
+  ReadOk, SeekOk, TruncOk, Good : Boolean;
+  LengthOnCard : Int64;
+  LengthOk, FirstRecordOk : Boolean;
   KeepBytes : Int64;
   Blocks : Int64;
 begin
@@ -411,7 +413,9 @@ begin
   ReadOk := False;
   SeekOk := False;
   TruncOk := False;
-  PascalOk := False;
+  LengthOk := False;
+  FirstRecordOk := False;
+  LengthOnCard := -1;
   KeepBytes := Int64(RecordCount div 2) * RecordSize;
 
   try
@@ -442,10 +446,14 @@ begin
     AssignFile(P, StreamName);
     Reset(P, RecordSize);
     try
+      { TWO SEPARATE FACTS, REPORTED SEPARATELY. One boolean covering both
+        says a section failed without saying which half, and the length is
+        the half that is about the card. }
       Blocks := FileSize(P);
+      LengthOnCard := Int64(Blocks) * RecordSize;
+      LengthOk := LengthOnCard = KeepBytes;
       BlockRead(P, S, 1);
-      PascalOk := (Int64(Blocks) * RecordSize = KeepBytes) and
-                  StampIsRight(0, S);
+      FirstRecordOk := StampIsRight(0, S);
     finally
       CloseFile(P);
     end;
@@ -460,13 +468,18 @@ begin
   writeln('through the handle: seek to the last record ', YesNo(SeekOk),
           ', the record read back is its own ', YesNo(ReadOk),
           ', truncate to ', KeepBytes, ' bytes ', YesNo(TruncOk), '.');
-  writeln('the same name through Pascal''s own Reset and BlockRead, after ',
-          'that truncate: ', YesNo(PascalOk), '.');
-  writeln('tolerance: none. The last check is what says the two file layers ',
-          'share one position table rather than keeping one each - a second ',
-          'table would read the old length here.');
+  writeln('the same name reopened by Pascal''s own Reset, which asks the ',
+          'card: it is ', LengthOnCard, ' bytes and this side cut it to ',
+          KeepBytes, ' (', YesNo(LengthOk), '); record 0 still reads back ',
+          'correctly (', YesNo(FirstRecordOk), ').');
+  writeln('tolerance: none, and the length is the one that is about the ',
+          'card. Every figure above it comes from this side''s own table; ',
+          'the reopen is the only line here that asks the filesystem, so a ',
+          'length that disagrees is this layer and the card disagreeing ',
+          'about one file.');
 
-  Good := Good and SeekOk and ReadOk and TruncOk and PascalOk;
+  Good := Good and SeekOk and ReadOk and TruncOk and LengthOk and
+          FirstRecordOk;
   ProveHandleLayer := Good;
   writeln('3. the handle layer, and the one position ', Verdict(Good));
 end;
