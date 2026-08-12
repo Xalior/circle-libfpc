@@ -78,7 +78,7 @@ export BOARD CIRCLE_WORLDS SHIM FPC_COMPILER FPC_UNITS LIBFPC_HOME
 
 # ---------------------------------------------------------------------------
 
-EXAMPLES = m0 m2
+EXAMPLES = m0 m1 m2
 
 .PHONY: all lib examples clean-board rebuild help $(EXAMPLES)
 
@@ -123,7 +123,7 @@ ifneq ($(wildcard $(CIRCLESTDLIBHOME)/Config.mk),)
 
 include $(CIRCLESTDLIBHOME)/Config.mk
 
-SRCS = src/halt.cpp
+SRCS = src/halt.cpp src/heap.cpp
 OBJS = $(SRCS:src/%.cpp=$(OBJDIR)/%.o)
 DEPS = $(OBJS:.o=.d)
 

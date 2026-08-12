@@ -8,13 +8,13 @@
   which is the point — it is a program on a single-core machine with SDL
   underneath, exactly as a desktop build is.
 
-  THERE IS NO HEAP HERE. The memory manager is a later milestone, so its
-  eleven function pointers are still nil and any allocation is a call through
-  one of them. Every value below is written through a path that allocates
-  nothing: a string literal reaches the runtime as a short string, and an
-  integer, a character and a boolean are each turned into one before they are
-  written. An AnsiString or a UnicodeString would not be, so none appears
-  here. circle-libfpc's README states that boundary.
+  NOTHING HERE ALLOCATES. Every value below is written through a path that
+  asks the heap for nothing: a string literal reaches the runtime as a short
+  string, and an integer, a character and a boolean are each turned into one
+  before they are written. That was a requirement when this example was
+  written, because the memory manager was a later milestone; it is now simply
+  what this example is, which is writing and nothing else. Allocation has an
+  example of its own in m1.
 }
 program m2;
 
