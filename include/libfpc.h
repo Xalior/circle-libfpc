@@ -120,11 +120,24 @@ u64 LibFPC_CounterFrequency(void);
 // processor that this code is waiting rather than working; it is not a delay
 // and it changes nothing a program can observe.
 //
-// It is separate from the waiting itself because it is the seam that grows: a
-// wait must one day give the core to another Pascal thread and service SDL
-// while it waits, and that arrives as a body here rather than as a different
-// kind of wait.
+// It is what a wait falls back on when there is no other Pascal thread to
+// hand the core to. Giving the core away, and servicing SDL on the way, is the
+// scheduler's, and the scheduler is on the Pascal side.
 void LibFPC_CounterWaitHint(void);
+
+// WHICH CORE IS EXECUTING THIS INSTRUCTION.
+//
+// Circle's own answer, which reads a processor system register and reaches no
+// device, so the application core may ask it about itself.
+//
+// The Free Pascal runtime layer reads it before any thread exists, to record
+// which core the guest machine is, and again at every entry to its scheduler
+// and at every thread's first instruction. A Pascal instruction executing
+// anywhere else stops the program with both numbers on the console. That is a
+// test of the hardware while Pascal is running rather than a restatement of
+// where threads were meant to go, so a thread that reached another core — as a
+// Circle task, as a std::thread, on a core the host lent — fails it.
+unsigned LibFPC_CurrentCore(void);
 
 #ifdef __cplusplus
 }
