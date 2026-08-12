@@ -42,7 +42,10 @@ Circle's `Rules.mk` and before `circle-libsdl2`'s `sdl-app.mk`. Read that
 file's header for what it needs and what it hands back, and
 `examples/m0/Makefile` for the whole of a working consumer. The rest are the
 same kernel with a different Pascal program inside it: `examples/m2` prints,
-`examples/m1` allocates, and `examples/m3` measures time.
+`examples/m1` allocates, `examples/m3` measures time, `examples/m4` runs
+threads, and `examples/m5` reads and writes files. `examples/m5` is also the
+one whose host kernel brings up the SD card, because a program that opens a
+file needs one mounted before its core is released.
 
 Free Pascal compiles the program to relocatable objects; Circle's own build
 does the link. The target refuses to produce an executable, deliberately, and
@@ -69,6 +72,61 @@ writes: when its ring is full the line is dropped and counted, and the drain
 reports the loss on the console. `writeln` therefore always reports success.
 Read `circle-libsdl2/docs/LOGGING.md` for what that costs and how fast the
 console really is.
+
+There is no console input. A `readln` from the keyboard reports that it did
+nothing.
+
+## Files and directories
+
+`Assign`, `Reset`, `Rewrite`, `Append`, `BlockRead`, `BlockWrite`, `Seek`,
+`FilePos`, `FileSize`, `Truncate`, `Close`, `Erase` and `MkDir` work, on text
+files and on typed and untyped files alike. Every one of them reaches the card
+through `circle-libsdl2`'s file service and through nothing else. The card is a
+device, a device belongs to the core that owns it, and the guest is not on that
+core.
+
+**The file service is not a second filesystem.** It is the C library's own file
+call, carried to the core that owns the card and performed there. So a Pascal
+program gets the C library's semantics, and the error translation in
+`sysfile.inc` is the same one every libc-backed Free Pascal target does.
+
+**The file position lives on this side.** The service names an offset on every
+read and write and remembers nothing between calls, while Free Pascal expects
+an open file to know where it is. So the target holds one entry per open file —
+where it is, and how long it is — advanced on each read and write, set on each
+seek, and taken from the open so that a seek from the end has an answer. There
+is no lock on that table and none is needed: Pascal threads run on one core,
+nothing preempts them, and no routine in the file layer gives the core away.
+`CircleOpenFileCount` reports how many entries are taken, which is what a
+program asks to see that closing a file gave its entry back.
+
+**Four operations have no channel and say so.** The file service carries no
+rename, no rmdir, no chdir and no getcwd, so `Rename`, `RmDir`, `ChDir` and
+`GetDir` set I/O result 1 and do nothing at all. The C library on this board
+has all four; reaching for one of them from the application core would run it
+on the core that does not own the card, which is the thing the whole layer
+exists to avoid. The missing channels belong in `circle-libsdl2`'s own backlog.
+
+What that costs a program: there is no way to change the working directory or
+to ask what it is, so a relative name resolves against whatever the host kernel
+last set on the core that owns the card, and a program that wants to be sure of
+a name gives an absolute one.
+
+**A host kernel has to bring the card up itself**, on core 0, before it
+releases the application core — the EMMC device, the FAT mount, and the C
+library's standard descriptors. Read `examples/m5/kernel.cpp` for the order and
+why it is that order. The descriptors matter as much as the mount: the C
+library hands out the lowest free one, and the Free Pascal runtime reads 0, 1
+and 2 as the console, so a kernel that skips `CGlueStdioInit` gets a file whose
+every write goes to the log with nothing saying so.
+
+Nothing here uses the linker's `--wrap`. That is the pattern for an application
+with no file layer of its own; this library is the file layer, so it points
+itself at the file service directly.
+
+The `SysUtils` file family — `TFileStream`, `FindFirst`, `DirectoryExists` and
+the rest — is not built for this target yet, so a program that uses `SysUtils`
+does not compile.
 
 ## Elapsed time
 
@@ -298,6 +356,13 @@ cooperative thread from outside means abandoning it wherever it happens to
 be, and there is no unwinding here that could put that right. Thread
 priorities are one value, so setting one reports that it was not set.
 
-There is no file or directory layer, no calendar time and no console input, so
-a Pascal program that asks the date, or reads or opens anything, does not work
-yet — it links cleanly and fails when it runs.
+The file and directory layer is written and built, and `examples/m5` is the
+image that puts it to the board. That image has not run there either. It
+writes only under `/tmp-clf-m5`, a directory of its own making, erases its own
+files, and leaves one witness behind for the host kernel to read back from the
+core that owns the card and then remove — the directory included, because the
+file service carries no rmdir.
+
+There is no calendar time, no console input, and no `SysUtils`, so a Pascal
+program that asks the date, reads the keyboard, or uses the `SysUtils` file
+family does not work yet.
