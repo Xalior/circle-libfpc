@@ -626,21 +626,29 @@ known answer through a unit and compares — a published digest, a round trip
 through its own bytes, a date the calendar fixes — because a unit that compiles
 and then faults looks identical from the development host.
 
-SDL is written and built, and `examples/m8` is the image that puts it to the
-board. That image has not run there. It declares a virtual display of its own
-that matches nothing on the board, makes a window, a renderer and textures in
-three formats, draws through every path the library offers, and then reads its
-own frames back with `SDL_RenderReadPixels` — which returns SDL's framebuffer
-in the coordinates the caller drew in — and compares them against what it drew,
-pixel by pixel, printing the tolerance beside each verdict. It opens no file
-and leaves nothing on the card.
+**SDL runs on the board from Pascal, and `examples/m8` has drawn a picture
+there.** It declares a virtual display of its own that matches nothing on the
+board, makes a window, a renderer and textures in three formats, draws through
+every path the library offers, and then reads its own frames back with
+`SDL_RenderReadPixels` — which returns SDL's framebuffer in the coordinates the
+caller drew in — and compares them against what it drew, pixel by pixel,
+printing the tolerance beside each verdict. Every one of those comparisons
+agrees. It opens no file and leaves nothing on the card.
 
-The event queue is proved as far as it can be with nobody at the bench: that
-the subsystem comes up, that a poll with nothing pending answers so, that an
-event pushed in comes back out with every field intact, and that scancode and
-keycode remain each other's inverse across the whole table. A key press cannot
-be manufactured, so the program watches for one for ten seconds, reports
-whatever arrived, and treats an empty watch as the expected answer.
+The event queue is proved as far as it can be with nobody at the bench: that a
+poll with nothing pending answers so, that an event pushed in comes back out
+with every field intact, and that scancode and keycode remain each other's
+inverse across the whole table. A key press cannot be manufactured, so the
+program watches for one for ten seconds, reports whatever arrived, and treats
+an empty watch as the expected answer.
+
+One check disagrees with `circle-libsdl2` rather than failing, and the program
+says which and prints the line that proves it. `SDL_WasInit(SDL_INIT_EVENTS)`
+answers zero after `SDL_Init(SDL_INIT_VIDEO)`, although the SDL2 header that
+library ships states the implication twice. The events subsystem is genuinely
+up — nothing later in the program could work otherwise — so this is the
+bookkeeping and not the machine, but it is bookkeeping applications branch on.
+It is recorded there to be raised, never worked around here.
 
 There is no console input through the Free Pascal runtime, so `ReadLn` does not
 work yet. That is a separate question from SDL's keyboard, which does.

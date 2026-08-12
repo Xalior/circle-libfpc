@@ -136,6 +136,14 @@ var
     rather than only that something did. }
   Failures : string = '';
 
+  { A check that fails because a component BELOW this program does not do what
+    its own documentation says. Kept apart from the failures above, because
+    the two ask for different work: a failure here is this parcel's to fix,
+    and a divergence is a defect to report to whoever owns the component.
+    Neither is hidden and neither is weakened — a divergent check runs exactly
+    as it was written and reports exactly what it found. }
+  Divergences : string = '';
+
   Win  : PSDL_Window   = nil;
   Ren  : PSDL_Renderer = nil;
   Pix  : TPixels       = nil;
@@ -170,6 +178,21 @@ begin
   WriteLn('  ', Name, ': ', Verdict(Yes));
   if not Yes then
     Failures := Failures + ' ' + Name;
+end;
+
+
+{ The same, for a check whose answer is settled by a component below this one.
+  The citation is what makes it usable: a claim that something else is at
+  fault is worth nothing without the line that proves it, and costs somebody a
+  day if it is wrong. }
+procedure Divergence(const Name: string; Yes: Boolean; const Cite: string);
+begin
+  WriteLn('  ', Name, ': ', Verdict(Yes));
+  if not Yes then
+  begin
+    WriteLn('    ^ NOT this program''s to fix. ', Cite);
+    Divergences := Divergences + ' ' + Name;
+  end;
 end;
 
 
@@ -322,8 +345,19 @@ begin
     WriteLn('  SDL_WasInit(VIDEO)  : ', Hex8(SDL_WasInit(SDL_INIT_VIDEO)));
     WriteLn('  SDL_WasInit(EVENTS) : ', Hex8(SDL_WasInit(SDL_INIT_EVENTS)),
             '  (video implies events)');
-    Judge('2c events came up with video',
-          SDL_WasInit(SDL_INIT_EVENTS) <> 0);
+    { THE EVENTS SUBSYSTEM REALLY IS UP — section 13 takes events off the
+      queue and section 18 reads the keyboard, and neither could if it were
+      not. What is wrong is the bookkeeping SDL_WasInit answers from, and an
+      application branches on that: `if (!SDL_WasInit(SDL_INIT_EVENTS))' is
+      how a great many of them decide whether to bring it up. }
+    Divergence('2c events came up with video',
+          SDL_WasInit(SDL_INIT_EVENTS) <> 0,
+          'circle-libsdl2 ships the genuine SDL2 header, which states the ' +
+          'implication twice - include/SDL2/SDL.h:85 "SDL_INIT_VIDEO ' +
+          'implies SDL_INIT_EVENTS" and :118 "automatically initializes ' +
+          'the events subsystem" - and src/init.cpp records only the flags ' +
+          'it was passed ("s_initialized |= flags"), applying no ' +
+          'implication. Upstream SDL2 ORs SDL_INIT_EVENTS into flags first.');
   end;
 
   DeclareAndInit := OK;
@@ -1076,6 +1110,8 @@ end;
       property of this binding rather than of the library: the host kernel
       prints the C number on its own line and the two are read together. }
 procedure SizesAndErrors;
+var
+  Redeclared : SInt32;
 begin
   Section('16', 'record sizes, and the error channel');
 
@@ -1094,11 +1130,32 @@ begin
   WriteLn('  after SDL_ClearError, the error is "', LastError, '"');
   Judge('16b the error clears', LastError = '');
 
-  { Provoke a real one rather than setting it: a refusal has to write the
-    channel for the channel to be worth reading. }
-  SDL_GetDisplayBounds(99, nil);
-  WriteLn('  after a bad display index    : "', LastError, '"');
-  Judge('16c a refusal says why', LastError <> '');
+  { PROVOKE A REAL REFUSAL rather than setting the error by hand: a refusal
+    has to write the channel for the channel to be worth reading.
+
+    A SECOND VIRTUAL DEVICE DECLARATION IS THE ONE TO USE, because it is
+    refused by documented rule rather than by accident. SDL_circle.h fixes the
+    declaration once accepted, and refuses one made after the display size has
+    been settled - which it was, at section 3 - returning -1 with SDL_GetError
+    saying which rule was not met, and changing nothing. So this asks for
+    something the library is required to say no to, and checks that it said
+    why as well as no.
+
+    IT WAS A BAD DISPLAY INDEX HERE, AND THAT WAS WRONG TWICE OVER. There is
+    one display and SDL_GetDisplayBounds does not take the index at all - the
+    parameter is unnamed in src/video.cpp, which is that library saying it is
+    ignored on purpose - so a nonsense index is not an error and nothing was
+    ever going to be reported. Worse, it was called with a nil rectangle,
+    which that function writes through before doing anything else. A nil there
+    is a write to address zero, which is mapped on this board, so it did not
+    fault - it corrupted low memory quietly and the test still ran. SDL's
+    contract requires a real rectangle; passing nil was this program's fault
+    and not something to report. }
+  Redeclared := SDL2Circle_DeclareVirtualDevice(32, CanvasW, CanvasH);
+  WriteLn('  a second display declaration : returns ', Redeclared,
+          ', error "', LastError, '"');
+  Judge('16c a refusal returns failure', Redeclared = -1);
+  Judge('16d a refusal says why', LastError <> '');
   SDL_ClearError;
 end;
 
@@ -1308,5 +1365,16 @@ begin
             ' drew or asked.')
   else
     WriteLn('M8: FAIL -', Failures);
+
+  { Reported separately and never folded into the verdict above, in either
+    direction. A divergence is not this program failing, so it must not read
+    as one; and it is not nothing, so it must not disappear. The citation
+    printed beside each is what makes it actionable. }
+  if Divergences <> '' then
+  begin
+    WriteLn('M8: and', Divergences,
+            ' disagreed with what a component below this program documents.');
+    WriteLn('    Each printed the line that proves it, where it failed above.');
+  end;
   WriteLn('=== end of the Pascal program ===');
 end.
