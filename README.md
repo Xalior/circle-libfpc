@@ -9,11 +9,15 @@ It is built per board, alongside
 display, input, sound and I/O a Pascal program uses. That library carries the
 newlib and libc++ world; this one does not provide its own.
 
+## The Free Pascal target
+
+The target is `circlesdl2`. Free Pascal names a target for the library its
+runtime layer binds to wherever one machine carries more than one binding, as
+`netwlibc` sits beside `netware`. This runtime layer calls `circle-libsdl2`
+rather than Circle, and the single-core machine a Pascal program runs on is
+that library's shape rather than Circle's. The name `circle` belongs to a
+target that binds Circle directly.
+
 ## Status
 
 Empty. Nothing here is implemented yet.
-
-The first attempt targeted `aarch64-embedded`, a Free Pascal target with no
-Circle beneath it. Nothing built that way can link Circle's drivers, so all of
-it was removed rather than kept as a starting point. The work begins again with
-Circle as the target.
