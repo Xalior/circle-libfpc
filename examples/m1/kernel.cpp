@@ -91,8 +91,7 @@ CKernel::CKernel(void)
     // sends every log line somewhere nobody is listening.
     : m_Serial(0, FALSE, 0),
       m_Timer(&m_Interrupt),
-      m_Logger(m_Options.GetLogLevel(), &m_Timer),
-      m_CPUThrottle(CPUSpeedMaximum)
+      m_Logger(m_Options.GetLogLevel(), &m_Timer)
 {
     m_ActLED.Blink(3);
 }

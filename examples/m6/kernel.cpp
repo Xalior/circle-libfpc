@@ -171,7 +171,6 @@ CKernel::CKernel(void)
     : m_Serial(0, FALSE, 0),
       m_Timer(&m_Interrupt),
       m_Logger(m_Options.GetLogLevel(), &m_Timer),
-      m_CPUThrottle(CPUSpeedMaximum),
       m_EMMC(&m_Interrupt, &m_Timer, &m_ActLED),
       // The C library's standard descriptors, over the UART. Nothing writes
       // through it; it exists so the three lowest descriptors are taken.

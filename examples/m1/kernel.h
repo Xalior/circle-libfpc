@@ -20,7 +20,6 @@
 #include <circle/timer.h>
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
-#include <circle/cputhrottle.h>
 #include <circle/multicore.h>
 #include <circle/memory.h>
 #include <circle/types.h>
@@ -64,9 +63,15 @@ private:
     // other cores write into — including the one the Pascal program's own
     // output arrives in.
     CScheduler          m_Scheduler;
-    // Circle boots at idle clock and the shim reaches this object through
-    // CCPUThrottle::Get(), which asserts rather than returning null.
-    CCPUThrottle        m_CPUThrottle;
+    // THERE IS NO CCPUThrottle HERE AND THERE MUST NOT BE. It belongs to
+    // circle-libsdl2, which constructs it the moment a kernel calls
+    // SDL2Circle_ArmCoreRuntime() — which this one does, on every core — and
+    // drives it from whichever per-frame heartbeat is live. Circle permits
+    // exactly one in a system and halts in the constructor of a second —
+    // `assertion failed: s_pThis == 0' — so a kernel that declares one of its
+    // own stops the board at that call. The library cannot compensate either,
+    // because CCPUThrottle::Get() halts rather than reporting an absence, so
+    // it can never be asked the question.
     CSplitCores         m_Cores;
 };
 

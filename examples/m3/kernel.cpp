@@ -12,12 +12,13 @@
 // it itself, with an instruction, so there is nothing for a host kernel to
 // initialise, hand over or marshal.
 //
-// WHAT THE HOST KERNEL DOES AFFECT IS THE RATE THE CORE RUNS AT. CCPUThrottle
-// is constructed at CPUSpeedMaximum, so the processor clock is settled before
-// the application core is released rather than climbing under it. That does
-// not change what the counter says — the counter runs at its own frequency and
-// is not the processor clock — but it is what makes a Pascal loop take the
-// same time twice.
+// WHAT WOULD AFFECT THE RATE THE CORE RUNS AT IS CCPUThrottle, and this kernel
+// declares none. That object belongs to circle-libsdl2 — Circle permits
+// exactly one in a system and halts in the constructor of a second — so the
+// processor clock is circle-libsdl2's business, not this file's, and this
+// file makes no claim about it. That does not change what the counter says —
+// the counter runs at its own frequency and is not the processor clock —
+// it is a separate question from the one this milestone answers.
 //
 // WHAT REACHES THE SERIAL CONSOLE, AND FROM WHERE
 //
@@ -102,8 +103,7 @@ CKernel::CKernel(void)
     // sends every log line somewhere nobody is listening.
     : m_Serial(0, FALSE, 0),
       m_Timer(&m_Interrupt),
-      m_Logger(m_Options.GetLogLevel(), &m_Timer),
-      m_CPUThrottle(CPUSpeedMaximum)
+      m_Logger(m_Options.GetLogLevel(), &m_Timer)
 {
     m_ActLED.Blink(3);
 }
