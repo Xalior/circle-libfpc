@@ -944,40 +944,71 @@ end;
 
 function ProveUnicode: Boolean;
 {
-  THE WIDE STRING MANAGER IS INSTALLED AT RUN TIME, like the variant manager
-  of section 4, and IT IS THE PROGRAM THAT CHOOSES IT, not the target.
+  TWO ROUTINES, AND ONLY ONE OF THEM ASKS THE WIDE STRING MANAGER. That is
+  the whole of this section, and getting it wrong once is what it now guards
+  against.
 
-  The runtime installs a default one at start-up — initunicodestringmanager,
-  in the generic runtime that every target shares — and that default is ASCII:
-  it upper cases a to A and leaves every accented letter exactly as it found
-  it, without an error, without a warning, and without any way to tell from
-  the result that nothing happened. A target with an operating system behind
-  it replaces that default with the system's own; this board has none to ask,
-  so the answer is fpwidestring, which is pure Pascal over the Unicode tables
-  and installs itself in its initialization.
+  SysUtils.UpperCase is ASCII BY DEFINITION, on every Free Pascal target, with
+  a manager installed or without one. Its UnicodeString form is
+  InternalChangeCase(S,['a'..'z'],-32) in rtl/objpas/sysutils/sysuni.inc, and
+  its own comment there says so: it converts the characters from a to z and
+  nothing else. Handed an accented letter it returns that letter unchanged.
+  That is correct, it is not a fallback, and it is not evidence of anything
+  being missing.
 
-  A UNIT'S INITIALIZATION ONLY RUNS IF SOMETHING NAMES THE UNIT. So this
-  program names fpwidestring in its uses clause and calls nothing in it. That
-  is exactly what a Unix program does with cwstring, and it is the one line
-  that separates the first check below from silently passing through.
+  SysUtils.UnicodeUpperCase is the one that asks. It is
+  widestringmanager.UpperUnicodeStringProc(s), one line in the same file, and
+  the manager behind that pointer is what a program elects.
+
+  WHAT THE RUNTIME PUTS THERE UNTIL A PROGRAM ELECTS ONE IS NOT AN ASCII
+  FALLBACK EITHER. initunicodestringmanager, in the generic runtime every
+  target shares, points it at StubUnicodeCase, which writes
+  "This binary has no string conversion support compiled in." to standard
+  error and halts with runtime error 234. So a program that calls
+  UnicodeUpperCase without electing a manager stops, loudly, naming its own
+  cure — it does not quietly hand back what it was given.
+
+  THIS TARGET HAS NO OPERATING SYSTEM TO ELECT ONE FROM, so the answer is
+  fpwidestring: pure Pascal over the same Unicode tables the Character unit
+  reads, installing itself in its initialization, which runs only because this
+  program names the unit in its uses clause. A Unix program names cwstring for
+  exactly the same reason.
+
+  So this section checks BOTH routines against the SAME input. UpperCase must
+  leave the two accented letters alone; UnicodeUpperCase must case all three.
+  A section that checked only one of them could pass while the other was
+  wrong, which is how the first version of this test blamed the target for
+  Free Pascal's own definition of UpperCase.
 }
 var
-  Good, CaseOk, TableOk, Utf8Ok : Boolean;
-  Wide, Upper : UnicodeString;
-  Utf8, Back : string;
+  Good, AsciiOk, CaseOk, RoundOk, TableOk, Utf8Ok : Boolean;
+  Wide, Ascii, Upper, Round_ : UnicodeString;
+  Utf8 : string;
 begin
   writeln;
   writeln('--- 11. Unicode: fpwidestring, unicodedata and Character ---');
   Good := True;
-  CaseOk := False; TableOk := False; Utf8Ok := False;
+  AsciiOk := False; CaseOk := False; RoundOk := False;
+  TableOk := False; Utf8Ok := False;
 
   try
-    { Latin small letter e with acute, and Greek small alpha. Neither has an
-      upper case form the ASCII fallback knows about. }
+    { Latin small letter e with acute, and Greek small alpha. Neither is in
+      a..z, so the two routines below must answer differently about them. }
     Wide := UnicodeString(#$00E9) + UnicodeString(#$03B1) + 'z';
-    Upper := UpperCase(Wide);
+
+    { The ASCII routine. Only the z may move. }
+    Ascii := UpperCase(Wide);
+    AsciiOk := (Ascii[1] = WideChar($00E9)) and (Ascii[2] = WideChar($03B1))
+               and (Ascii[3] = 'Z');
+
+    { The routine that asks the manager. All three must move. }
+    Upper := UnicodeUpperCase(Wide);
     CaseOk := (Upper[1] = WideChar($00C9)) and (Upper[2] = WideChar($0391))
               and (Upper[3] = 'Z');
+
+    { And back down again, which catches a table read in one direction only. }
+    Round_ := UnicodeLowerCase(Upper);
+    RoundOk := Round_ = Wide;
 
     { The character tables, through the Character unit. }
     TableOk := TCharacter.IsLetter(WideChar($00E9)) and
@@ -990,7 +1021,6 @@ begin
       letter two more, so a conversion that only handled ASCII produces the
       wrong length before it produces the wrong text. }
     Utf8 := UTF8Encode(Wide);
-    Back := '';
     Utf8Ok := (Length(Utf8) = 5) and (UTF8Decode(Utf8) = Wide);
   except
     on E: Exception do
@@ -1000,22 +1030,31 @@ begin
       end;
   end;
 
-  writeln('upper casing U+00E9 U+03B1 z gave U+', HexStr(Ord(Upper[1]), 4),
-          ' U+', HexStr(Ord(Upper[2]), 4), ' U+', HexStr(Ord(Upper[3]), 4),
+  writeln('UpperCase, which is ASCII by definition, turned U+00E9 U+03B1 z ',
+          'into U+', HexStr(Ord(Ascii[1]), 4), ' U+', HexStr(Ord(Ascii[2]), 4),
+          ' U+', HexStr(Ord(Ascii[3]), 4),
+          ' (want 00E9 03B1 005A - the two accented letters MUST NOT move): ',
+          YesNo(AsciiOk), '.');
+  writeln('UnicodeUpperCase, which asks the wide string manager, turned the ',
+          'same text into U+', HexStr(Ord(Upper[1]), 4), ' U+',
+          HexStr(Ord(Upper[2]), 4), ' U+', HexStr(Ord(Upper[3]), 4),
           ' (want 00C9 0391 005A): ', YesNo(CaseOk), '.');
+  writeln('UnicodeLowerCase brought all three back to what they were: ',
+          YesNo(RoundOk), '.');
   writeln('the Character unit answers about letters, digits and case from ',
           'the Unicode tables: ', YesNo(TableOk), '.');
   writeln('UTF-8 of those three characters is ', Length(Utf8),
           ' bytes (want 5) and decodes back to the same text: ',
           YesNo(Utf8Ok), '.');
-  writeln('tolerance: none, and the first line is the one that matters. ',
-          'It fails, with both accented letters unchanged, for a program ',
-          'that does not name fpwidestring in its uses clause: the runtime''s ',
-          'own default manager is ASCII and says nothing about what it could ',
-          'not do. Naming that unit is the whole of what a program must do ',
-          'here, and it is what a Unix program does with cwstring.');
+  writeln('tolerance: none, and the first two lines must disagree with each ',
+          'other. A run where BOTH leave the accented letters alone is a ',
+          'program that called the ASCII routine twice, not a target that ',
+          'cannot case them. A program that omits fpwidestring from its uses ',
+          'clause does not reach this line at all: the runtime''s own stub ',
+          'writes "This binary has no string conversion support compiled ',
+          'in." to standard error and halts with runtime error 234.');
 
-  Good := Good and CaseOk and TableOk and Utf8Ok;
+  Good := Good and AsciiOk and CaseOk and RoundOk and TableOk and Utf8Ok;
   Report('11. Unicode', Good);
   ProveUnicode := Good;
 end;

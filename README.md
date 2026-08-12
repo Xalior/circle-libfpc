@@ -264,25 +264,37 @@ development machine rather than on a board.
 
 ### A program chooses its own wide string manager
 
-**`uses fpwidestring` if the program cases a `UnicodeString`.** The runtime
-installs a default manager at start-up, and that default is ASCII: it upper
-cases `a` to `A` and leaves an accented letter exactly as it found it, with no
-error and no way to tell from the result that nothing happened. A target with
-an operating system behind it replaces that default with the system's own.
-This board has none to ask, so the answer is `fpwidestring` — pure Pascal over
-the Unicode tables, installing itself in its `initialization`, which only runs
-because the program named the unit. This is Free Pascal's shape everywhere; a
-Unix program names `cwstring` for the same reason.
+**`uses fpwidestring` if the program cases a `UnicodeString`.** `UpperCase`
+and `LowerCase` never needed it and never will: their `UnicodeString` forms are
+`InternalChangeCase(S,['a'..'z'],±32)` in
+`rtl/objpas/sysutils/sysuni.inc` — ASCII by definition, on every Free Pascal
+target, and an accented letter comes back unchanged because that is what the
+routine is for. `UnicodeUpperCase` and `UnicodeLowerCase` are the ones that
+ask, through `widestringmanager.UpperUnicodeStringProc`.
+
+Until a program elects a manager, that pointer is `StubUnicodeCase`, which
+writes
+
+```
+This binary has no string conversion support compiled in.
+Recompile the application with a unit that installs a unicodestring manager in the program uses clause.
+```
+
+to standard error and halts with runtime error 234. **So the failure is loud
+and names its own cure** — nothing here silently returns the text it was
+given.
+
+A target with an operating system behind it elects a manager from the system.
+This board has none to ask, so the answer is `fpwidestring`: pure Pascal over
+the same Unicode tables the `Character` unit reads, installing itself in its
+`initialization`, which runs only because the program named the unit. This is
+Free Pascal's shape everywhere; a Unix program names `cwstring` for the same
+reason.
 
 It is not installed for every program on purpose. It pulls `unicodedata`'s
 tables into the image, and a program that never touches a `UnicodeString`
-should not carry them.
-
-`examples/m7` is a Pascal program that proves these on the board. Every
-section of it runs a known answer through a unit and compares, because
-CLF-012's lesson generalises: several of these units install something at run
-time that no link checks, and a unit that compiles and then faults is
-indistinguishable from a working one until it runs.
+should not carry them — and because the failure is a halt with a message
+rather than a wrong answer, a program that needs it finds out.
 
 ### The Dos unit
 
