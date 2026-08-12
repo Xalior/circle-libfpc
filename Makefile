@@ -72,13 +72,20 @@ CIRCLESTDLIBHOME = $(CIRCLE_WORLDS)/circle-stdlib-$(BOARD)
 FPC_COMPILER ?= $(CURDIR)/fpc/compiler/ppcrossa64
 FPC_UNITS    ?= $(CURDIR)/fpc/rtl/units/aarch64-circlesdl2
 
+# Free Pascal's packages, in that same tree. Every package that builds for
+# this target leaves its units under <package>/units/<cpu>-<os>, and
+# fpc-app.mk expands this into that list — so a program may be written in
+# DateUtils, StrUtils, IniFiles and the rest rather than in the runtime
+# library alone.
+FPC_PACKAGES ?= $(CURDIR)/fpc/packages
+
 LIBFPC_HOME := $(CURDIR)
 
-export BOARD CIRCLE_WORLDS SHIM FPC_COMPILER FPC_UNITS LIBFPC_HOME
+export BOARD CIRCLE_WORLDS SHIM FPC_COMPILER FPC_UNITS FPC_PACKAGES LIBFPC_HOME
 
 # ---------------------------------------------------------------------------
 
-EXAMPLES = m0 m1 m2 m3 m4 m5 m6
+EXAMPLES = m0 m1 m2 m3 m4 m5 m6 m7
 
 .PHONY: all lib examples clean-board rebuild help $(EXAMPLES)
 

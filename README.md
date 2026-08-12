@@ -32,6 +32,10 @@ cross-compiler with its runtime units. `CIRCLE_WORLDS`, `SHIM`, `FPC_COMPILER`
 and `FPC_UNITS` say where each of them is. A missing one is a wrong variable,
 not something for this build to fetch or build.
 
+`FPC_PACKAGES` says where Free Pascal's packages tree is, and a program that
+names a unit from it needs those packages built. Without it a program is
+limited to the runtime library alone.
+
 GNU make 4.0 or later. macOS ships 3.81 as `make`, which compares file
 timestamps to the second; Homebrew installs a current one as `gmake`.
 
@@ -43,10 +47,11 @@ file's header for what it needs and what it hands back, and
 `examples/m0/Makefile` for the whole of a working consumer. The rest are the
 same kernel with a different Pascal program inside it: `examples/m2` prints,
 `examples/m1` allocates, `examples/m3` measures time, `examples/m4` runs
-threads, `examples/m5` reads and writes files, and `examples/m6` does the same
-through `SysUtils` and `TFileStream`. The host kernels of `m5` and `m6` are the
-ones that bring up the SD card, because a program that opens a file needs one
-mounted before its core is released.
+threads, `examples/m5` reads and writes files, `examples/m6` does the same
+through `SysUtils` and `TFileStream`, and `examples/m7` exercises the standard
+library. The host kernels of `m5`, `m6` and `m7` are the ones that bring up the
+SD card, because a program that opens a file needs one mounted before its core
+is released.
 
 Free Pascal compiles the program to relocatable objects; Circle's own build
 does the link. The target refuses to produce an executable, deliberately, and
@@ -223,6 +228,64 @@ answers `tpNormal` and setting one changes nothing.
 `examples/m6` is a Pascal program that proves all of this on the board, and its
 host kernel walks the same directory from the core that owns the card to check
 the guest's search against a count it made itself.
+
+## The standard library
+
+**A program is written in more than the runtime library**, and Free Pascal
+keeps most of that in its packages. Those are built for this target: the whole
+of `rtl-objpas` (`DateUtils`, `StrUtils`, `Variants`, `RTTI`, `FmtBCD` and the
+rest), `fcl-base` (`IniFiles`, `contnrs`, `SyncObjs`, `CustApp`, `URIParser`,
+the CSV and expression parsers), `rtl-generics` (`Generics.Collections`),
+`fcl-stl`, `hash`, `paszlib`, `bzip2`, `fcl-json`, `fcl-xml`, `fcl-image` with
+`pasjpeg` under it, `regexpr`, `libtar`, `unzip`, `symbolic`, `tplylib`, and
+the machine-independent part of `rtl-extra` (`objects`, `matrix`, `ucomplex`,
+`real48utils`).
+
+Which packages build for a target is each package's own `fpmake.pp` to say,
+and that is where this target is named. A package not named there is not built,
+and a program that reaches for one of its units is told the unit cannot be
+found — at compile time, on the development host, which is where a missing unit
+should be found.
+
+**What is not built is not built for a reason.** `rtl-console` has no `crt`,
+`keyboard`, `video` or `mouse` for this machine, and the console belongs to
+SDL here in any case; `fcl-process` needs processes and this machine runs one
+program; `fcl-net` needs sockets; `fcl-registry` needs a registry; `fcl-res`
+reads and writes the resource containers of executable formats, which this
+target does not produce. Every binding to a shared library — `zlib`, `libpng`,
+`sqlite`, `openssl`, `x11`, `gtk2` and the rest of that class — needs a library
+this world does not carry and cannot load one at run time. The host tools
+(`fppkg`, `fpmkunit`, `ide`, `fv`, `pastojs`, `webidl`, `fcl-passrc`) run on a
+development machine rather than on a board.
+
+**The runtime library gained units of its own** to carry those packages:
+`math`, `fgl`, `charset`, `cpall` with the code page tables, `character`,
+`unicodedata`, `unicodenumtable`, `fpwidestring` — and `Dos`.
+
+`examples/m7` is a Pascal program that proves these on the board. Every
+section of it runs a known answer through a unit and compares, because
+CLF-012's lesson generalises: several of these units install something at run
+time that no link checks, and a unit that compiles and then faults is
+indistinguishable from a working one until it runs.
+
+### The Dos unit
+
+Turbo Pascal's `Dos` unit is built for this target because Free Pascal's own
+packages need it: `paszlib`'s `gzio` and the `unzip` package both call
+`GetFAttr` on every target that is not Unix, and neither builds without it.
+
+It is written over `SysUtils` rather than over the file service. Every routine
+it offers already exists there, reaching the card through `circle-libsdl2` and
+nothing else, so `Dos` here is a translation of Turbo Pascal's conventions — a
+byte of attribute bits, a packed timestamp, `DosError` instead of an exception
+— onto calls that were already made. It adds no crossing of its own.
+
+Its `SearchRec` carries the `SysUtils` search that drives it, which is why the
+record's layout is this target's own; every target declares its own for the
+same reason. What this board cannot answer, it refuses: `SetDate` and
+`SetTime` report failure because nothing keeps a date here, `Exec` reports
+failure because this machine runs one program, and `GetEnv` answers with
+nothing because there is no environment.
 
 ## Elapsed time
 
@@ -467,6 +530,15 @@ run there either. It works under one directory of its own making,
 `/tmp-clf-m6`, and touches nothing outside it: it removes its own working files
 and leaves a witness and the four files its directory search ran over, for the
 host kernel to count on the core that owns the card and then remove.
+
+Free Pascal's packages are built for the target, and `examples/m7` is the image
+that puts them to the board. That image has not run there. It works under one
+directory of its own making, `/tmp-clf-m7`, removes everything it wrote
+including the directory, and the host kernel then looks at the card itself, on
+the core that owns it, to see whether that is true. Every section of it runs a
+known answer through a unit and compares — a published digest, a round trip
+through its own bytes, a date the calendar fixes — because a unit that compiles
+and then faults looks identical from the development host.
 
 There is no console input, so a Pascal program that reads the keyboard does not
 work yet.

@@ -37,6 +37,16 @@
 #   BOARD             which board's archive to link.
 #   PREFIX, AR        from Circle's Rules.mk.
 #
+# WHAT IT TAKES IF IT IS GIVEN
+#
+#   FPC_PACKAGES      Free Pascal's packages directory. Each package that
+#                     builds for this target leaves its units in
+#                     <package>/units/<cpu>-<os>, and every one of those
+#                     directories is put on the unit search path and into the
+#                     runtime archive. Without it a program is limited to the
+#                     runtime library itself: DateUtils, StrUtils, IniFiles,
+#                     Generics.Collections and the rest live in packages.
+#
 
 ifeq ($(strip $(FPC_APP)),)
 $(error fpc-app.mk: set FPC_APP to the Pascal program module before including it)
@@ -53,6 +63,18 @@ endif
 
 FPC_CPU ?= aarch64
 FPC_OS  ?= circlesdl2
+
+# EVERY UNIT DIRECTORY THE PROGRAM MAY REACH, THE RUNTIME'S FIRST.
+#
+# Free Pascal builds each package into a unit directory of its own rather than
+# into one place, so the list is expanded from the packages directory rather
+# than written down: a package that does not build for this target leaves no
+# such directory and simply is not on the list. Naming them individually would
+# be a second copy of a decision that already lives in each package's
+# fpmake.pp.
+FPC_PACKAGE_UNITS = $(if $(FPC_PACKAGES),\
+	$(wildcard $(FPC_PACKAGES)/*/units/$(FPC_CPU)-$(FPC_OS)))
+FPC_UNIT_DIRS     = $(FPC_UNITS) $(FPC_PACKAGE_UNITS)
 
 # Where the blob is built, and where the record of what built it sits beside
 # it. Both are gitignored.
@@ -81,12 +103,12 @@ endif
 FPC_MAIN_ALIAS ?= fpc_program_main
 
 FPC_FLAGS = -T$(FPC_OS) -P$(FPC_CPU) -vq -XM$(FPC_MAIN_ALIAS) \
-	-Fu$(FPC_UNITS) -FU$(FPC_BLOB_DIR) -FE$(FPC_BLOB_DIR) \
+	$(addprefix -Fu,$(FPC_UNIT_DIRS)) -FU$(FPC_BLOB_DIR) -FE$(FPC_BLOB_DIR) \
 	-XP$(PREFIX) -FD$(FPC_BINUTILS_DIR)
 
 FPC_APP_OBJ  = $(FPC_BLOB_DIR)/$(basename $(notdir $(FPC_APP))).o
 FPC_RTL_LIB  = $(FPC_BLOB_DIR)/libfpcrtl.a
-FPC_RTL_OBJS := $(wildcard $(FPC_UNITS)/*.o)
+FPC_RTL_OBJS := $(wildcard $(addsuffix /*.o,$(FPC_UNIT_DIRS)))
 
 FPC_APP_OBJS = $(FPC_APP_OBJ)
 FPC_APP_LIBS = $(FPC_RTL_LIB) $(LIBFPC_HOME)/libfpc-$(BOARD).a
@@ -111,7 +133,8 @@ FPC_APP_LIBS = $(FPC_RTL_LIB) $(LIBFPC_HOME)/libfpc-$(BOARD).a
 #
 # Skipped under `make -n`, which expands this the same as a real run and would
 # otherwise have a dry run delete build artifacts.
-FPC_RTL_ID := $(shell shasum -a 256 $(FPC_COMPILER) $(wildcard $(FPC_UNITS)/*) 2>/dev/null \
+FPC_RTL_ID := $(shell shasum -a 256 $(FPC_COMPILER) \
+	$(wildcard $(addsuffix /*,$(FPC_UNIT_DIRS))) 2>/dev/null \
 	| shasum -a 256 | cut -d' ' -f1)
 
 ifeq (,$(findstring n,$(firstword -$(MAKEFLAGS))))
@@ -128,10 +151,11 @@ $(FPC_APP_OBJ): $(FPC_APP) | $(FPC_BLOB_DIR)
 	@$(LIBFPC_HOME)/fpc-compile.sh $(FPC_BLOB_DIR)/fpc-compile.log \
 		$(PREFIX)nm $@ $(FPC_COMPILER) $(FPC_FLAGS) $(FPC_EXTRA_FLAGS) $(FPC_APP)
 
-# The runtime units as an archive, so the link takes the ones the program
-# actually reaches and leaves the rest out. Free Pascal builds them all —
-# system, objpas, strings, ctypes, uuchar — and a program that uses one of
-# them should not carry the other four.
+# The runtime units and the package units as one archive, so the link takes
+# the ones the program actually reaches and leaves the rest out. Free Pascal
+# builds every unit of every package that names this target, which is far more
+# than any one program uses; a program that reads an INI file should not carry
+# the JPEG decoder.
 $(FPC_RTL_LIB): $(FPC_RTL_OBJS) | $(FPC_BLOB_DIR)
 	@echo "  AR    $@"
 	@rm -f $@

@@ -17,7 +17,7 @@ fpcblob/
 # blob tree by fpc-app.mk.
 *.rtl-stamp
 
-# The card-route gate the M5 and M6 examples carry: the Pascal side's
+# The card-route gate the M5, M6 and M7 examples carry: the Pascal side's
 # undefined symbols, and the stamp that records the gate passing on them.
 # Both are read out of the objects on every build.
 no-card-route.stamp
