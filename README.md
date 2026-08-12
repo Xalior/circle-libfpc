@@ -43,9 +43,10 @@ file's header for what it needs and what it hands back, and
 `examples/m0/Makefile` for the whole of a working consumer. The rest are the
 same kernel with a different Pascal program inside it: `examples/m2` prints,
 `examples/m1` allocates, `examples/m3` measures time, `examples/m4` runs
-threads, and `examples/m5` reads and writes files. `examples/m5` is also the
-one whose host kernel brings up the SD card, because a program that opens a
-file needs one mounted before its core is released.
+threads, `examples/m5` reads and writes files, and `examples/m6` does the same
+through `SysUtils` and `TFileStream`. The host kernels of `m5` and `m6` are the
+ones that bring up the SD card, because a program that opens a file needs one
+mounted before its core is released.
 
 Free Pascal compiles the program to relocatable objects; Circle's own build
 does the link. The target refuses to produce an executable, deliberately, and
@@ -135,9 +136,78 @@ Nothing here uses the linker's `--wrap`. That is the pattern for an application
 with no file layer of its own; this library is the file layer, so it points
 itself at the file service directly.
 
-The `SysUtils` file family — `TFileStream`, `FindFirst`, `DirectoryExists` and
-the rest — is not built for this target yet, so a program that uses `SysUtils`
-does not compile.
+## SysUtils, Classes, and TFileStream
+
+**This is the layer a real Pascal program actually writes against**, and it is
+built for this target: `SysUtils` carries `FileOpen`, `FileRead`, `FileSeek`,
+`FindFirst`, `FileExists` and `DirectoryExists`; `Classes` carries
+`TFileStream`, `TStringList`, `TList`, `TComponent` and `TThread`. `sysconst`,
+`rtlconsts`, `types` and `typinfo` are built with them because those two are
+declared in terms of them.
+
+**Both file layers share one position table**, and that is the whole of what
+the target had to add. The file service names an offset on every read and
+write, so an open file's position lives on the Pascal side — and Pascal's own
+`Reset` and `SysUtils`' `FileOpen` hand out the same descriptors. A second
+table would give one descriptor two positions and make the right answer depend
+on which layer touched it last. So the System unit exports the six operations
+`SysUtils` needs — `CircleFileOpen`, `CircleFileClose`, `CircleFileRead`,
+`CircleFileWrite`, `CircleFileSeek` and `CircleFileTruncate` — and there is one
+table underneath all of it. `CircleOpenSearchCount` is `CircleOpenFileCount`'s
+counterpart for directory searches.
+
+**A search holds one of a fixed number of slots** until `FindClose` is called.
+`TSearchRec` carries a single 32 bit handle with no room for the directory
+handle, the pattern and the attribute filter beside it, so the handle is a slot
+number. The pattern matcher is the target's own: `*` and `?`, case-insensitive,
+because the card's filesystem does not tell two names apart by case alone.
+
+**A directory entry on this card carries only its name.** The service reports
+no type, size or timestamp with it, so the search asks about each name
+separately — which is what Free Pascal's other directory-reading targets do,
+for the same reason.
+
+### What this board cannot answer, and how each one says so
+
+None of these reports success. Each reports the failure `SysUtils` reports, and
+says why in its own comment.
+
+- `FileGetDate` and `FileSetDate` return -1: **the service answers about a
+  name, and an open descriptor cannot be asked.** `FileAge` is the question
+  that can be answered here, and it takes a name.
+- `FileSetAttr` returns -1, and `FileGetAttr` reports only whether the name is
+  a directory. The service carries no attribute bits.
+- **A timestamp on this card is the epoch.** The C library's `stat` here fills
+  in the size and whether the name is a directory and leaves the modification
+  time at zero, so `FileAge` and `TSearchRec.Time` report what that says rather
+  than a time invented to look plausible.
+- `DiskFree` and `DiskSize` return -1: there is no free-space figure in the
+  service.
+- `ExecuteProcess` raises. There are no processes here, and a caller that
+  ignored a -1 would carry on as though a program had run and failed.
+- `GetEnvironmentVariable` returns an empty string, which is the true answer: a
+  Circle kernel is loaded and started, not invoked with a set of variables.
+- `FileExists` says **no** to a directory, deliberately. A program asking it is
+  about to open the name, and a directory cannot be opened. `DirectoryExists`
+  is the question for a directory.
+
+`GetLastOSError` answers from what the file service last reported. This machine
+has no errno the guest may read — the C library's is one variable shared by
+every core, which is why the service returns a negated error number instead of
+setting one — so each routine catches the number as it sees it, per Pascal
+thread.
+
+`TThread` is this library's scheduler with an object on top: `BeginThread`,
+`SuspendThread`, `ResumeThread` and `WaitForThreadTerminate`, which are the
+portable interface over the scheduler `examples/m4` proves. Nothing preempts,
+so a thread created unsuspended is on the run list from the moment
+`TThread.Create` returns but does not run until the thread that made it gives
+the core away. Priorities are one value here, so `TThread.GetPriority` always
+answers `tpNormal` and setting one changes nothing.
+
+`examples/m6` is a Pascal program that proves all of this on the board, and its
+host kernel walks the same directory from the core that owns the card to check
+the guest's search against a count it made itself.
 
 ## Elapsed time
 
@@ -146,10 +216,10 @@ places.** Elapsed time — how long something took, and how long to wait — is
 the Arm generic timer's free-running counter, read directly. On this build
 that counter is a processor system register, one per core, so the application
 core reads it with an instruction: no device, no lock, no other core, and
-therefore nothing to cross. Calendar time is the other half: the date and time
-a saved file is stamped with is Circle's timer object, an object is a device,
-and a device belongs to the core that owns it. That half goes through
-`circle-libsdl2` and is not written yet.
+therefore nothing to cross. Calendar time is the other half, and it goes through
+`circle-libsdl2`: `SysUtils`' `Now`, `Date`, `Time` and `GetLocalTime` read it
+through one call in `src/clock.cpp`, which is that library's replacement for
+the C library's `_gettimeofday` and nothing else.
 
 The System unit carries four routines for the first half.
 
@@ -376,6 +446,12 @@ read back from the core that owns the card and then remove. It also leaves the
 working directory inside `/tmp-clf-m5`, so the host kernel can read that on the
 same core and see for itself where `ChDir` put it.
 
-There is no calendar time, no console input, and no `SysUtils`, so a Pascal
-program that asks the date, reads the keyboard, or uses the `SysUtils` file
-family does not work yet.
+The `SysUtils` file family, `Classes` and `TFileStream` are written and built,
+and `examples/m6` is the image that puts them to the board. That image has not
+run there either. It works under one directory of its own making,
+`/tmp-clf-m6`, and touches nothing outside it: it removes its own working files
+and leaves a witness and the four files its directory search ran over, for the
+host kernel to count on the core that owns the card and then remove.
+
+There is no console input, so a Pascal program that reads the keyboard does not
+work yet.

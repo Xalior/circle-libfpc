@@ -125,6 +125,18 @@ u64 LibFPC_CounterFrequency(void);
 // scheduler's, and the scheduler is on the Pascal side.
 void LibFPC_CounterWaitHint(void);
 
+// CALENDAR TIME — the date, which is the other half.
+//
+// Seconds since 1970-01-01 UTC and microseconds within the second. Zero on
+// success; -1 when the clock refused, and then neither output is written.
+//
+// It is circle-libsdl2's answer, whatever that library currently decides —
+// this is one call and two assignments, with no clock of its own behind it.
+// A Pascal program therefore reads exactly what a C program on this board
+// reads. There is no battery-backed clock on a Pi, so that answer is well
+// defined and is not the real date; src/clock.cpp says where it comes from.
+int LibFPC_CalendarTime(s64 *pSeconds, u32 *pMicroSeconds);
+
 // WHICH CORE IS EXECUTING THIS INSTRUCTION.
 //
 // Circle's own answer, which reads a processor system register and reaches no
