@@ -1,0 +1,13 @@
+--- a/sdl2.pas	2026-08-12 19:16:05
++++ b/sdl2.pas	2026-08-12 21:23:31
+@@ -133,6 +133,10 @@
+     {$IFDEF FPC}
+       {$linklib libSDL2}
+     {$ENDIF}
++  {$ENDIF}
++
++  {$IFDEF CIRCLESDL2}
++    SDL_LibName = 'SDL2';
+   {$ENDIF}
+ 
+ {$I sdlstdinc.inc}

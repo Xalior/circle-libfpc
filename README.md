@@ -48,10 +48,11 @@ file's header for what it needs and what it hands back, and
 same kernel with a different Pascal program inside it: `examples/m2` prints,
 `examples/m1` allocates, `examples/m3` measures time, `examples/m4` runs
 threads, `examples/m5` reads and writes files, `examples/m6` does the same
-through `SysUtils` and `TFileStream`, and `examples/m7` exercises the standard
-library. The host kernels of `m5`, `m6` and `m7` are the ones that bring up the
-SD card, because a program that opens a file needs one mounted before its core
-is released.
+through `SysUtils` and `TFileStream`, `examples/m7` exercises the standard
+library, and `examples/m8` drives SDL. The host kernels of `m5`, `m6` and `m7`
+are the ones that bring up the SD card, because a program that opens a file
+needs one mounted before its core is released; `m8`'s is the one that runs a
+presentation core, because it is the only one that draws.
 
 Free Pascal compiles the program to relocatable objects; Circle's own build
 does the link. The target refuses to produce an executable, deliberately, and
@@ -524,6 +525,58 @@ names on this target in any case.
 `examples/m1` is a Pascal program that proves all of this on the board, and
 reports its own verdict on the console.
 
+## SDL from a Pascal program
+
+A Pascal program reaches the display and the keyboard the same way a C one
+does: through `circle-libsdl2`, calling SDL. Nothing in this library sits in
+that path, and there is no Pascal graphics layer here to learn.
+
+**The binding is not this project's.** A Pascal SDL program already carries
+one — the SDL2-for-Pascal unit set, in one generation or another — and that is
+the one to use, unchanged. A port to this board is then a relink rather than a
+rewrite, which is the only arrangement in which porting an existing game means
+anything. `patches/` carries the one hunk that binding needs to know this
+target exists, and its README says what the hunk does and why the alternatives
+do not work.
+
+**Point `FPC_UNIT_SRC_DIRS` at the binding's source.** `fpc-app.mk` compiles
+every unit it finds there beside the program and links their objects; read its
+header for the whole of that. `examples/m8/Makefile` takes the binding's
+directory as `SDL2_PASCAL_UNITS` and refuses to build without one.
+
+**`units/sdl2circle.pas` is this library's own, and it is one unit.** It
+declares the calls in `circle-libsdl2`'s `SDL_circle.h` that no SDL binding
+carries, because they are not in SDL's headers — chiefly the virtual display
+every application must declare before `SDL_Init`. An application names it
+beside its binding, exactly as a C application adds one `#include`. It depends
+on no binding and uses plain Free Pascal types, so it never argues with one
+over a type name.
+
+Only the application's half of that header is declared. A Circle host kernel
+is C++ — there is no other kind — so the calls that arm a core, create the
+servo or hand a core to presentation have no Pascal caller, and CLF-005 makes
+giving the guest a way to reach them a non-conformance rather than a
+convenience.
+
+### The event record is shorter in Pascal than in C
+
+SDL's `SDL_Event` is a union with a `padding` member that fixes it at 56 bytes
+on a 64-bit machine, and a compile-time assertion in `SDL_events.h` holds it
+there. Every entry point that fills an event writes that many bytes.
+
+**The Pascal translations of that header carry the variants and not the
+padding**, so `TSDL_Event` is as large as its largest declared variant and no
+larger — which is smaller. Passing the address of a bare one to
+`SDL_PollEvent` hands SDL a buffer shorter than the one it will fill. On a
+desktop the overrun lands in another local; here it lands on a stack this
+library allocated, and Circle lays the core stacks out with no guard page
+between them.
+
+So an event is passed through a variant record whose other arm is a byte array
+past 56. `examples/m8` carries one and prints both sizes — its own and the C
+one, which its host kernel prints from the compiler that built the library —
+so the difference is on the log rather than in a comment.
+
 ## Status
 
 The library reaches M1 and M2 on the board: a Pascal program links into a
@@ -573,5 +626,21 @@ known answer through a unit and compares — a published digest, a round trip
 through its own bytes, a date the calendar fixes — because a unit that compiles
 and then faults looks identical from the development host.
 
-There is no console input, so a Pascal program that reads the keyboard does not
-work yet.
+SDL is written and built, and `examples/m8` is the image that puts it to the
+board. That image has not run there. It declares a virtual display of its own
+that matches nothing on the board, makes a window, a renderer and textures in
+three formats, draws through every path the library offers, and then reads its
+own frames back with `SDL_RenderReadPixels` — which returns SDL's framebuffer
+in the coordinates the caller drew in — and compares them against what it drew,
+pixel by pixel, printing the tolerance beside each verdict. It opens no file
+and leaves nothing on the card.
+
+The event queue is proved as far as it can be with nobody at the bench: that
+the subsystem comes up, that a poll with nothing pending answers so, that an
+event pushed in comes back out with every field intact, and that scancode and
+keycode remain each other's inverse across the whole table. A key press cannot
+be manufactured, so the program watches for one for ten seconds, reports
+whatever arrived, and treats an empty watch as the expected answer.
+
+There is no console input through the Free Pascal runtime, so `ReadLn` does not
+work yet. That is a separate question from SDL's keyboard, which does.

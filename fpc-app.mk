@@ -21,8 +21,9 @@
 #                     rather than the framework — sdl-app-init.ld draws that
 #                     line by whether something arrived as an object or as an
 #                     archive member.
-#   $(FPC_APP_LIBS)   the Free Pascal runtime units, and this library's C
-#                     half, both as archives. They go in LIBS, inside the
+#   $(FPC_APP_LIBS)   the Free Pascal runtime units, any unit the compiler
+#                     built from source beside the program, and this library's
+#                     C half, all as archives. They go in LIBS, inside the
 #                     link's --start-group, because the program's object and
 #                     the runtime refer to each other in both directions: the
 #                     runtime calls the program's tables, the program calls
@@ -46,6 +47,23 @@
 #                     runtime archive. Without it a program is limited to the
 #                     runtime library itself: DateUtils, StrUtils, IniFiles,
 #                     Generics.Collections and the rest live in packages.
+#
+#   FPC_UNIT_SRC_DIRS directories holding Pascal unit SOURCE the program may
+#                     name — a third-party binding, or a unit of this
+#                     library's own. Unlike FPC_UNITS and FPC_PACKAGES, which
+#                     hold units already compiled for this target, these are
+#                     compiled on demand into the blob directory when a
+#                     program names them, and every object that appears there
+#                     beside the program's own is archived and linked.
+#
+#                     THAT ARCHIVE IS WHY THIS SETTING IS MORE THAN A SEARCH
+#                     PATH. A unit compiled from source leaves its object in
+#                     the blob directory, and until this was here nothing
+#                     collected it: the compile succeeded, the program's own
+#                     object linked, and the link then failed on every routine
+#                     the unit implements — or, for a unit that is only
+#                     declarations, succeeded while leaving its initialisation
+#                     section out of the image.
 #
 
 ifeq ($(strip $(FPC_APP)),)
@@ -76,6 +94,15 @@ FPC_PACKAGE_UNITS = $(if $(FPC_PACKAGES),\
 	$(wildcard $(FPC_PACKAGES)/*/units/$(FPC_CPU)-$(FPC_OS)))
 FPC_UNIT_DIRS     = $(FPC_UNITS) $(FPC_PACKAGE_UNITS)
 
+# Unit SOURCE directories come after the compiled ones, so a unit that exists
+# in both is taken already built.
+ifneq ($(strip $(FPC_UNIT_SRC_DIRS)),)
+FPC_MISSING_SRC_DIRS := $(filter-out $(wildcard $(FPC_UNIT_SRC_DIRS)),$(FPC_UNIT_SRC_DIRS))
+ifneq ($(strip $(FPC_MISSING_SRC_DIRS)),)
+$(error fpc-app.mk: FPC_UNIT_SRC_DIRS names a directory that is not there: $(FPC_MISSING_SRC_DIRS))
+endif
+endif
+
 # Where the blob is built, and where the record of what built it sits beside
 # it. Both are gitignored.
 FPC_BLOB_DIR  ?= fpcblob
@@ -103,15 +130,17 @@ endif
 FPC_MAIN_ALIAS ?= fpc_program_main
 
 FPC_FLAGS = -T$(FPC_OS) -P$(FPC_CPU) -vq -XM$(FPC_MAIN_ALIAS) \
-	$(addprefix -Fu,$(FPC_UNIT_DIRS)) -FU$(FPC_BLOB_DIR) -FE$(FPC_BLOB_DIR) \
+	$(addprefix -Fu,$(FPC_UNIT_DIRS) $(FPC_UNIT_SRC_DIRS)) \
+	-FU$(FPC_BLOB_DIR) -FE$(FPC_BLOB_DIR) \
 	-XP$(PREFIX) -FD$(FPC_BINUTILS_DIR)
 
 FPC_APP_OBJ  = $(FPC_BLOB_DIR)/$(basename $(notdir $(FPC_APP))).o
 FPC_RTL_LIB  = $(FPC_BLOB_DIR)/libfpcrtl.a
 FPC_RTL_OBJS := $(wildcard $(addsuffix /*.o,$(FPC_UNIT_DIRS)))
+FPC_UNIT_LIB = $(FPC_BLOB_DIR)/libfpcunits.a
 
 FPC_APP_OBJS = $(FPC_APP_OBJ)
-FPC_APP_LIBS = $(FPC_RTL_LIB) $(LIBFPC_HOME)/libfpc-$(BOARD).a
+FPC_APP_LIBS = $(FPC_RTL_LIB) $(FPC_UNIT_LIB) $(LIBFPC_HOME)/libfpc-$(BOARD).a
 
 # WHICH RUNTIME THE BLOB WAS BUILT AGAINST, AND WHY IT IS A FILE.
 #
@@ -146,7 +175,11 @@ endif
 # The refusal to link, and the check that the objects are real, are in
 # fpc-compile.sh; read its header for what the compiler does here and why the
 # exit code alone cannot be the test.
-$(FPC_APP_OBJ): $(FPC_APP) | $(FPC_BLOB_DIR)
+FPC_UNIT_SRCS := $(wildcard $(addsuffix /*.pas,$(FPC_UNIT_SRC_DIRS)) \
+	$(addsuffix /*.pp,$(FPC_UNIT_SRC_DIRS)) \
+	$(addsuffix /*.inc,$(FPC_UNIT_SRC_DIRS)))
+
+$(FPC_APP_OBJ): $(FPC_APP) $(FPC_UNIT_SRCS) | $(FPC_BLOB_DIR)
 	@echo "  FPC   $@"
 	@$(LIBFPC_HOME)/fpc-compile.sh $(FPC_BLOB_DIR)/fpc-compile.log \
 		$(PREFIX)nm $@ $(FPC_COMPILER) $(FPC_FLAGS) $(FPC_EXTRA_FLAGS) $(FPC_APP)
@@ -160,6 +193,34 @@ $(FPC_RTL_LIB): $(FPC_RTL_OBJS) | $(FPC_BLOB_DIR)
 	@echo "  AR    $@"
 	@rm -f $@
 	@$(AR) cr $@ $(FPC_RTL_OBJS)
+
+# EVERY OBJECT THE COMPILER LEFT IN THE BLOB BESIDE THE PROGRAM'S OWN.
+#
+# That is one object per unit the compiler had to build from source — a
+# third-party binding named in FPC_UNIT_SRC_DIRS, or a unit of this library's.
+# A unit that came ready-built out of FPC_UNITS or FPC_PACKAGES is not here;
+# its object is in the runtime archive above.
+#
+# The list is read when the recipe runs rather than when this file is parsed,
+# because it does not exist until the compile above has happened. It is a
+# shell listing rather than $(wildcard) for the same reason: make reads a
+# directory once and answers from that reading for the rest of the run, so a
+# $(wildcard) over the blob would report what was there before the compiler
+# wrote to it.
+#
+# An archive, not a list of objects, so the link takes only the units the
+# program reaches — a binding that declares the whole of a library leaves the
+# parts nobody calls out of the image.
+#
+# WITH NOTHING TO PUT IN IT the file is written as an empty archive by hand.
+# `ar' refuses to create one with no members named, and the link needs the
+# file to exist either way; `!<arch>' with nothing after it is what an empty
+# archive is.
+$(FPC_UNIT_LIB): $(FPC_APP_OBJ)
+	@echo "  AR    $@"
+	@rm -f $@
+	@objs=`ls $(FPC_BLOB_DIR)/*.o 2>/dev/null | grep -vx '$(FPC_APP_OBJ)'`; \
+	if [ -n "$$objs" ]; then $(AR) cr $@ $$objs; else printf '!<arch>\n' > $@; fi
 
 $(FPC_BLOB_DIR):
 	@mkdir -p $(FPC_BLOB_DIR)
