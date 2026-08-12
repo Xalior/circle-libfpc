@@ -40,9 +40,9 @@ timestamps to the second; Homebrew installs a current one as `gmake`.
 A host kernel builds the Pascal application by including `fpc-app.mk` after
 Circle's `Rules.mk` and before `circle-libsdl2`'s `sdl-app.mk`. Read that
 file's header for what it needs and what it hands back, and
-`examples/m0/Makefile` for the whole of a working consumer. `examples/m2` is
-the same kernel with a Pascal program that prints, and `examples/m1` the same
-kernel again with a Pascal program that allocates.
+`examples/m0/Makefile` for the whole of a working consumer. The rest are the
+same kernel with a different Pascal program inside it: `examples/m2` prints,
+`examples/m1` allocates, and `examples/m3` measures time.
 
 Free Pascal compiles the program to relocatable objects; Circle's own build
 does the link. The target refuses to produce an executable, deliberately, and
@@ -69,6 +69,49 @@ writes: when its ring is full the line is dropped and counted, and the drain
 reports the loss on the console. `writeln` therefore always reports success.
 Read `circle-libsdl2/docs/LOGGING.md` for what that costs and how fast the
 console really is.
+
+## Elapsed time
+
+**Time splits in two here, and the two halves are answered in different
+places.** Elapsed time — how long something took, and how long to wait — is
+the Arm generic timer's free-running counter, read directly. On this build
+that counter is a processor system register, one per core, so the application
+core reads it with an instruction: no device, no lock, no other core, and
+therefore nothing to cross. Calendar time is the other half: the date and time
+a saved file is stamped with is Circle's timer object, an object is a device,
+and a device belongs to the core that owns it. That half goes through
+`circle-libsdl2` and is not written yet.
+
+The System unit carries four routines for the first half.
+
+- `CircleCounterFrequency` — how many ticks the counter counts in a second, as
+  the firmware recorded it at boot. It is also the resolution: one tick is one
+  part in this many of a second. Zero is a real answer and means the firmware
+  left the register unset.
+- `CircleCounter` — the counter itself, in its own ticks. It starts at zero
+  when the board comes up and only goes forwards, and there are at least 56
+  bits behind it, which at this rate is decades from wrapping.
+- `CircleElapsedMicroseconds` — the same thing in microseconds.
+- `CircleWaitMicroseconds` — wait for a stated length of time. The deadline is
+  worked out once in ticks and the counter is read until it arrives; ticks are
+  rounded up, so the wait is never short.
+
+The counter reads themselves are three instructions in `src/counter.cpp`, and
+all the arithmetic is on the Pascal side. A read is bracketed by an
+instruction barrier, without which a timestamp can be taken before the work it
+is meant to bracket has finished — so a read costs more than an unsynchronised
+one would, and that cost sits inside every interval measured with it.
+
+**A wait occupies the core, and nothing else is waiting for it yet.** There is
+no scheduler here, so a Pascal program is one line of execution on a core of
+its own and a wait has nothing to give the core to. When there is one, a wait
+must yield to it and must service SDL while it waits, because SDL is the only
+thing the guest speaks to. That arrives as a body at the point in the waiting
+loop the processor's yield hint is called from; the deadline arithmetic and
+the counter read do not change.
+
+`examples/m3` is a Pascal program that measures all of this on the board and
+reports its own verdict, tolerance by tolerance, on the console.
 
 ## The heap
 
@@ -149,11 +192,18 @@ reports its own verdict on the console.
 
 ## Status
 
-The library reaches M1 and M2: a Pascal program links into a Circle host
-kernel on the application core, the host kernel calls its entry point, the
-program allocates out of Circle's heap, and what it writes reaches the
-console through `circle-libsdl2`.
+The library reaches M1 and M2 on the board: a Pascal program links into a
+Circle host kernel on the application core, the host kernel calls its entry
+point, the program allocates out of Circle's heap, and what it writes reaches
+the console through `circle-libsdl2`.
 
-There is no thread manager and no file or directory layer, and console input
-is not implemented, so a Pascal program that starts a thread, reads or opens
-anything does not work yet — it links cleanly and fails when it runs.
+Elapsed time and timed waits are written and built, and `examples/m3` is the
+image that puts them to the board. That image has not run there, so the
+interface is implemented rather than proven — and a memory manager or a clock
+that is merely linked proves nothing, which is the whole reason each example
+reports its own verdict off the console.
+
+There is no thread manager, no file or directory layer, no calendar time and
+no console input, so a Pascal program that starts a thread, asks the date, or
+reads or opens anything does not work yet — it links cleanly and fails when it
+runs.

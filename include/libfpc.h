@@ -91,6 +91,41 @@ size_t LibFPC_HeapBlockSize(const void *pBlock);
 // and reports the answer as TFPCHeapStatus.CurrHeapUsed.
 size_t LibFPC_HeapFreeSpace(void);
 
+// ELAPSED TIME.
+//
+// Time splits in two on this board. Calendar time is Circle's timer object,
+// and an object is a device, so it belongs to the core that owns the devices
+// and the guest reaches it through circle-libsdl2. Elapsed time is the Arm
+// generic timer's free-running counter, which is a processor system register
+// here — one per core, read with an instruction, reaching no memory-mapped
+// register and no other core. Reading it is therefore not a crossing, and it
+// is the application core's own to read.
+//
+// These three are the instructions and nothing else. Turning ticks into
+// microseconds, and reaching a deadline, are decisions, and those are on the
+// Pascal side in the runtime's own layer.
+
+// The counter itself: a count of ticks since the board came up, which only
+// ever goes forwards. At least 56 bits of counter behind it, so at this
+// board's frequency it is decades from wrapping.
+u64 LibFPC_CounterRead(void);
+
+// The frequency that counter runs at, in ticks per second, as the firmware
+// recorded it at boot. It is the same on every core and cannot change while
+// the board runs. Zero means the firmware left it unset, and a caller that
+// cares has to say so rather than assume a value.
+u64 LibFPC_CounterFrequency(void);
+
+// The point inside a timed wait where the core has nothing to do. It tells the
+// processor that this code is waiting rather than working; it is not a delay
+// and it changes nothing a program can observe.
+//
+// It is separate from the waiting itself because it is the seam that grows: a
+// wait must one day give the core to another Pascal thread and service SDL
+// while it waits, and that arrives as a body here rather than as a different
+// kind of wait.
+void LibFPC_CounterWaitHint(void);
+
 #ifdef __cplusplus
 }
 #endif
