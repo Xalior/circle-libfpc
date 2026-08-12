@@ -43,8 +43,15 @@ program m7;
 uses
   { The runtime this target already had. }
   SysUtils, Classes, Math,
-  { The runtime units this parcel added beside it. }
-  fgl, Character,
+  { The runtime units this parcel added beside it.
+
+    fpwidestring IS NAMED FOR ITS SIDE EFFECT AND NOTHING ELSE. Nothing below
+    calls it. Its initialization is what replaces the runtime's own wide
+    string manager — which is ASCII and can do nothing with an accented
+    letter — and an initialization only runs for a unit something references.
+    This is Free Pascal's shape everywhere: a Unix program names cwstring for
+    the same reason. Section 11 is what it is here for. }
+  fgl, Character, fpwidestring,
   { rtl-objpas: the Delphi compatibility units. }
   StrUtils, DateUtils, Variants,
   { The containers, from three packages that each answer the question
@@ -312,7 +319,7 @@ function ProveDateUtils: Boolean;
 var
   Good : Boolean;
   D, Later, Back : TDateTime;
-  Days, Months : LongInt;
+  Days, Months, ExactMonths : LongInt;
   Unix, UnixBack : Int64;
   Leap, NotLeap : Boolean;
   WeekDay : Word;
@@ -330,7 +337,17 @@ begin
     Later := IncMonth(D, 14);
     LaterText := FormatDateTime('yyyy-mm-dd', Later);
     Days := DaysBetween(D, EncodeDateTime(2000, 3, 1, 12, 0, 0, 0));
+    { TWO ANSWERS, AND BOTH ARE RIGHT. MonthsBetween's AExact parameter
+      defaults to False, and that form is deliberately approximate: dateutil.inc
+      computes Trunc(days / ApproxDaysPerMonth) with ApproxDaysPerMonth =
+      30.4375. The 425 days from 2000-01-01 to 2001-03-01 divide to 13.96, so
+      the approximate answer is 13 and not 14. Passing True instead walks the
+      calendar through PeriodBetween and answers 1 year 2 months, which is 14.
+      Both are checked, because a program that read 13 as a defect would be
+      wrong and a program that expected 14 from the default would be wrong
+      too. }
     Months := MonthsBetween(D, Later);
+    ExactMonths := MonthsBetween(D, Later, True);
     Unix := DateTimeToUnix(D);
     Back := UnixToDateTime(Unix);
     UnixBack := DateTimeToUnix(Back);
@@ -347,7 +364,11 @@ begin
   end;
 
   writeln('from 2000-01-01, IncMonth by 14 gives ', LaterText,
-          ' (want 2001-03-01) and MonthsBetween says ', Months, ' (want 14).');
+          ' (want 2001-03-01).');
+  writeln('MonthsBetween over those 425 days says ', Months,
+          ' (want 13: the default form divides by 30.4375 days and truncates)',
+          ' and ', ExactMonths,
+          ' when asked for the exact one (want 14: 1 year and 2 months).');
   writeln('DaysBetween 2000-01-01 and 2000-03-01 is ', Days,
           ' (want 60, because 2000 is a leap year).');
   writeln('DateTimeToUnix gives ', Unix,
@@ -356,9 +377,12 @@ begin
           '; 1900 is not: ', YesNo(NotLeap),
           '; 2000-01-01 is day ', WeekDay, ' of the week (want 6, Saturday).');
   writeln('tolerance: none. Every figure above is a property of the calendar ',
-          'and not of this board.');
+          'and of DateUtils'' own definitions, not of this board. The two ',
+          'month counts differ on every Free Pascal target and neither is a ',
+          'fault.');
 
-  Good := Good and (LaterText = '2001-03-01') and (Months = 14) and
+  Good := Good and (LaterText = '2001-03-01') and (Months = 13) and
+          (ExactMonths = 14) and
           (Days = 60) and (Unix = 946728000) and (UnixBack = Unix) and
           Leap and NotLeap and (WeekDay = 6);
   Report('3. DateUtils', Good);
@@ -377,19 +401,26 @@ function ProveVariants: Boolean;
   that does nothing until the Variants unit's initialization has run. That is
   CLF-012's shape, so this section is the check: without the manager, the
   first arithmetic on a variant faults rather than reporting anything.
+
+  BOTH CONSTANTS ARE WRITTEN WITH THEIR UNIT IN FRONT OF THEM. Variants
+  exports Null and Unassigned as functions, and a local variable of the same
+  name hides one without a word from the compiler: the assignment still
+  compiles, because anything at all converts to a Variant. Naming the unit
+  makes that impossible to do by accident.
 }
 var
   Good : Boolean;
   A, B, C : Variant;
   Sum : Double;
   Text : string;
-  Empty, Null : Boolean;
+  WasEmpty, WasNull, WasUnassigned : Boolean;
   Kind : LongInt;
 begin
   writeln;
   writeln('--- 4. Variants ---');
   Good := True;
-  Sum := 0; Text := ''; Empty := False; Null := False; Kind := -1;
+  Sum := 0; Text := ''; Kind := -1;
+  WasEmpty := False; WasNull := False; WasUnassigned := False;
 
   try
     A := 21;
@@ -403,9 +434,13 @@ begin
     Text := A + VarToStr(B);
 
     VarClear(A);
-    Empty := VarIsEmpty(A);
-    A := Null;
-    Null := VarIsNull(A);
+    WasEmpty := VarIsEmpty(A);
+
+    A := Variants.Null;
+    WasNull := VarIsNull(A) and (VarType(A) = varNull);
+
+    A := Variants.Unassigned;
+    WasUnassigned := VarIsEmpty(A) and (VarType(A) = varEmpty);
   except
     on E: Exception do
       begin
@@ -419,15 +454,19 @@ begin
           ' (want ', varDouble, ', varDouble).');
   writeln('a string variant joined to an integer one gives "', Text,
           '" (want "the answer is 42").');
-  writeln('VarClear leaves it empty: ', YesNo(Empty),
-          '; assigning Null leaves it null: ', YesNo(Null), '.');
+  writeln('VarClear leaves it empty: ', YesNo(WasEmpty),
+          '; assigning Variants.Null leaves it null, type code ', varNull,
+          ': ', YesNo(WasNull),
+          '; assigning Variants.Unassigned leaves it empty, type code ',
+          varEmpty, ': ', YesNo(WasUnassigned), '.');
   writeln('tolerance: none, and reaching the end of this section at all is ',
           'half of what it proves: the variant manager is installed at run ',
           'time and a missing one faults on the first line above rather ',
           'than reporting anything.');
 
   Good := Good and (Abs(Sum - 31.5) < 1E-9) and (Kind = varDouble) and
-          (Text = 'the answer is 42') and Empty and Null;
+          (Text = 'the answer is 42') and WasEmpty and WasNull and
+          WasUnassigned;
   Report('4. Variants', Good);
   ProveVariants := Good;
 end;
@@ -906,9 +945,21 @@ end;
 function ProveUnicode: Boolean;
 {
   THE WIDE STRING MANAGER IS INSTALLED AT RUN TIME, like the variant manager
-  of section 4. fpwidestring's initialization is what puts a real one in
-  place; without it, upper and lower casing a UnicodeString falls back to
-  ASCII and every accented letter comes through unchanged, silently.
+  of section 4, and IT IS THE PROGRAM THAT CHOOSES IT, not the target.
+
+  The runtime installs a default one at start-up — initunicodestringmanager,
+  in the generic runtime that every target shares — and that default is ASCII:
+  it upper cases a to A and leaves every accented letter exactly as it found
+  it, without an error, without a warning, and without any way to tell from
+  the result that nothing happened. A target with an operating system behind
+  it replaces that default with the system's own; this board has none to ask,
+  so the answer is fpwidestring, which is pure Pascal over the Unicode tables
+  and installs itself in its initialization.
+
+  A UNIT'S INITIALIZATION ONLY RUNS IF SOMETHING NAMES THE UNIT. So this
+  program names fpwidestring in its uses clause and calls nothing in it. That
+  is exactly what a Unix program does with cwstring, and it is the one line
+  that separates the first check below from silently passing through.
 }
 var
   Good, CaseOk, TableOk, Utf8Ok : Boolean;
@@ -958,9 +1009,11 @@ begin
           ' bytes (want 5) and decodes back to the same text: ',
           YesNo(Utf8Ok), '.');
   writeln('tolerance: none, and the first line is the one that matters. ',
-          'Without a wide string manager installed at run time, upper casing ',
-          'falls back to ASCII and BOTH accented letters come back ',
-          'unchanged — a wrong answer that raises nothing.');
+          'It fails, with both accented letters unchanged, for a program ',
+          'that does not name fpwidestring in its uses clause: the runtime''s ',
+          'own default manager is ASCII and says nothing about what it could ',
+          'not do. Naming that unit is the whole of what a program must do ',
+          'here, and it is what a Unix program does with cwstring.');
 
   Good := Good and CaseOk and TableOk and Utf8Ok;
   Report('11. Unicode', Good);
@@ -980,10 +1033,11 @@ function ProveDosUnit: Boolean;
   Turbo Pascal's conventions onto calls M5 and M6 already proved.
 }
 var
-  Good, SearchOk, AttrOk, TicksOk, ExpandOk : Boolean;
+  Good, SearchOk, AttrOk, AbsentOk, TicksOk, ExpandOk : Boolean;
   Rec : Dos.SearchRec;
   F : file;
-  Attr : Word;
+  Attr, AbsentAttr : Word;
+  AbsentError : Integer;
   Matches, Wrong : LongInt;
   Before, After : Int64;
   Expanded : string;
@@ -1000,8 +1054,10 @@ begin
   writeln;
   writeln('--- 12. the Dos unit ---');
   Good := True;
-  SearchOk := False; AttrOk := False; TicksOk := False; ExpandOk := False;
-  Matches := 0; Wrong := 0; Attr := $FFFF;
+  SearchOk := False; AttrOk := False; AbsentOk := False;
+  TicksOk := False; ExpandOk := False;
+  Matches := 0; Wrong := 0; Attr := $FFFF; AbsentAttr := $FFFF;
+  AbsentError := -1;
 
   try
     MakeEmpty(DosA);
@@ -1024,10 +1080,21 @@ begin
     Dos.FindClose(Rec);
     SearchOk := (Matches = DosCount) and (Wrong = 0);
 
-    { GetFAttr on a file variable, which is the call paszlib makes. }
+    { GETFATTR ON A FILE VARIABLE, WHICH IS THE CALL PASZLIB MAKES. Both
+      answers are needed. A GetFAttr that reported not-found for every name
+      would fail the first; one that reported found for every name would pass
+      the first and fail the second. The name is read out of the file record,
+      and that record holds it as wide characters on this target — read as
+      bytes it comes back as its first character alone, which is a real file
+      that answers a plausible wrong attribute rather than an error. }
     Assign(F, DosA);
     Dos.GetFAttr(F, Attr);
     AttrOk := (DosError = 0) and ((Attr and Dos.Directory) = 0);
+
+    Assign(F, WorkDir + '/no-such-name.dat');
+    Dos.GetFAttr(F, AbsentAttr);
+    AbsentError := DosError;
+    AbsentOk := (AbsentError <> 0) and (AbsentAttr = 0);
 
     { GetMsCount off the free-running counter. }
     Before := Dos.GetMsCount;
@@ -1048,18 +1115,23 @@ begin
   writeln('Dos.FindFirst over ', DosMask, ' found ', Matches, ' name(s), ',
           Wrong, ' of them wrong (want ', DosCount, ' and 0); ',
           'the file the mask excludes was not among them.');
-  writeln('Dos.GetFAttr on ', DosA, ' answered attribute ', Attr,
-          ' with DosError ', DosError, ': ', YesNo(AttrOk), '.');
+  writeln('Dos.GetFAttr on ', DosA, ', which the search above had just ',
+          'listed, answered attribute ', Attr, ' with DosError 0: ',
+          YesNo(AttrOk), '.');
+  writeln('Dos.GetFAttr on a name nothing ever created answered attribute ',
+          AbsentAttr, ' with DosError ', AbsentError, ': ', YesNo(AbsentOk),
+          '.');
   writeln('Dos.GetMsCount moved by ', After - Before,
           ' ms over a wait of 120 ms: ', YesNo(TicksOk), '.');
   writeln('Dos.FExpand made "walk-a.dat" absolute as "', Expanded, '": ',
           YesNo(ExpandOk), '.');
-  writeln('tolerance: the search and the attribute are exact. The ',
+  writeln('tolerance: the search and both attribute answers are exact, and ',
+          'they are exact in opposite directions on purpose. The ',
           'millisecond count is judged at 100 ms or more over a 120 ms wait, ',
           'which is slack for the scheduler and nothing else — it is the ',
           'same free-running counter M3 measured.');
 
-  Good := Good and SearchOk and AttrOk and TicksOk and ExpandOk;
+  Good := Good and SearchOk and AttrOk and AbsentOk and TicksOk and ExpandOk;
   Report('12. the Dos unit', Good);
   ProveDosUnit := Good;
 end;

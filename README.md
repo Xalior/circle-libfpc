@@ -262,6 +262,22 @@ development machine rather than on a board.
 `math`, `fgl`, `charset`, `cpall` with the code page tables, `character`,
 `unicodedata`, `unicodenumtable`, `fpwidestring` — and `Dos`.
 
+### A program chooses its own wide string manager
+
+**`uses fpwidestring` if the program cases a `UnicodeString`.** The runtime
+installs a default manager at start-up, and that default is ASCII: it upper
+cases `a` to `A` and leaves an accented letter exactly as it found it, with no
+error and no way to tell from the result that nothing happened. A target with
+an operating system behind it replaces that default with the system's own.
+This board has none to ask, so the answer is `fpwidestring` — pure Pascal over
+the Unicode tables, installing itself in its `initialization`, which only runs
+because the program named the unit. This is Free Pascal's shape everywhere; a
+Unix program names `cwstring` for the same reason.
+
+It is not installed for every program on purpose. It pulls `unicodedata`'s
+tables into the image, and a program that never touches a `UnicodeString`
+should not carry them.
+
 `examples/m7` is a Pascal program that proves these on the board. Every
 section of it runs a known answer through a unit and compares, because
 CLF-012's lesson generalises: several of these units install something at run
@@ -282,7 +298,12 @@ byte of attribute bits, a packed timestamp, `DosError` instead of an exception
 
 Its `SearchRec` carries the `SysUtils` search that drives it, which is why the
 record's layout is this target's own; every target declares its own for the
-same reason. What this board cannot answer, it refuses: `SetDate` and
+same reason. The name inside a file variable is **not** bytes here:
+`TFileTextRecChar` is `UnicodeChar` on any target with wide strings, so
+`GetFAttr`, `SetFAttr`, `GetFTime` and `SetFTime` convert it the way
+`rtl/unix/dos.pp` does. Read as bytes a name yields its first character alone,
+which is a real name that answers a plausible wrong attribute rather than an
+error. What this board cannot answer, it refuses: `SetDate` and
 `SetTime` report failure because nothing keeps a date here, `Exec` reports
 failure because this machine runs one program, and `GetEnv` answers with
 nothing because there is no environment.
