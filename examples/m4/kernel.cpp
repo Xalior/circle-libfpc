@@ -34,6 +34,7 @@
 #include "kernel.h"
 #include <libfpc.h>
 #include <SDL2/SDL_circle.h>
+#include <SDL2/SDL_error.h>
 #include <atomic>
 
 static const char From[] = "libfpc-m4";
@@ -145,17 +146,11 @@ void CSplitCores::Run(unsigned nCore)
 // ---------------------------------------------------------------------------
 
 CKernel::CKernel(void)
-    // The screen at whatever resolution the firmware has already set. It is a
-    // text console and nothing else; this example creates no SDL window, so
-    // the framebuffer behind it is not one anything else is going to want.
-    : m_Screen(0, 0),
-      // Serial device 0 is the GPIO14/15 header UART on every board. Named
-      // explicitly because Circle's RASPPI >= 5 default (SERIAL_DEVICE_DEFAULT
-      // = 10) is the Pi 5's dedicated debug connector, so taking the default
-      // sends every log line somewhere nobody is listening.
-      m_Serial(0, FALSE, 0),
-      // Serial first: it is the destination that settles the milestone.
-      m_Console(&m_Serial, &m_Screen),
+    // Serial device 0 is the GPIO14/15 header UART on every board. Named
+    // explicitly because Circle's RASPPI >= 5 default (SERIAL_DEVICE_DEFAULT
+    // = 10) is the Pi 5's dedicated debug connector, so taking the default
+    // sends every log line somewhere nobody is listening.
+    : m_Serial(0, FALSE, 0),
       m_Timer(&m_Interrupt),
       m_Logger(m_Options.GetLogLevel(), &m_Timer),
       m_CPUThrottle(CPUSpeedMaximum)
@@ -166,11 +161,20 @@ CKernel::CKernel(void)
 boolean CKernel::Initialize(void)
 {
     boolean bOK = TRUE;
-    if (bOK) bOK = m_Screen.Initialize();
     if (bOK) bOK = m_Serial.Initialize(115200);
-    // The logger writes to the tee, so every line below — this kernel's own
-    // and every byte the Pascal program produces — reaches both destinations.
-    if (bOK) bOK = m_Logger.Initialize(&m_Console);
+    if (bOK) bOK = m_Logger.Initialize(&m_Serial);
+    // THE SECOND DESTINATION, AND THE ONLY MOMENT ANYTHING IS ATTACHED. From
+    // here every line the logger carries — this kernel's own and every byte
+    // the Pascal program produces — is drawn on the screen as well as sent
+    // down the wire. The serial destination above is not replaced.
+    //
+    // Not fatal if it is refused: a board with no display still has the
+    // console that settles the milestone, and circle-libsdl2 has already said
+    // on it why the screen could not be had.
+    if (bOK && SDL2Circle_LogAttachScreen() != 0)
+        m_Logger.Write(From, LogWarning,
+                       "the screen is not a log destination: %s",
+                       SDL_GetError());
     if (bOK) bOK = m_Interrupt.Initialize();
     if (bOK) bOK = m_Timer.Initialize();
     if (bOK) SDL2Circle_ArmCoreRuntime();
@@ -185,9 +189,8 @@ TShutdownMode CKernel::Run(void)
     m_Logger.Write(From, LogNotice,
                    "circle-libfpc M4: hardware core 0, application core 1");
     m_Logger.Write(From, LogNotice,
-                   "console: serial and screen (%u x %u). Pascal writes to "
-                   "one channel and this kernel chose both destinations.",
-                   m_Screen.GetWidth(), m_Screen.GetHeight());
+                   "console: serial and screen. Pascal writes to one channel "
+                   "and this kernel chose both destinations.");
 
     // Until this has returned no other core may call into the shim: the
     // mailboxes are not armed, and a log line from core 1 would be written

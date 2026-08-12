@@ -38,8 +38,15 @@
 // WHERE THE CONSOLE LANDS IS THIS KERNEL'S DECISION, NEVER PASCAL'S. The
 // Pascal program writes into one channel and knows of no other; the drain
 // runs here, on the core that owns the devices, and this kernel chooses what
-// it drains to. Here that is the serial port and the screen, through the tee
-// below. Serial is always a destination and is what settles the milestone.
+// it drains to. Here that is the serial port and the screen. Serial is always
+// a destination and is what settles the milestone.
+//
+// THE SCREEN IS CIRCLE-LIBSDL2'S TO DRAW, and this kernel asks for it with one
+// call — SDL2Circle_LogAttachScreen in Initialize below. That library owns the
+// framebuffer and reads the mode the firmware granted back out of it, so its
+// console is right on a board whatever depth the firmware decided to hand out.
+// Circle's own screen device is sized by a compile-time depth macro that no
+// reply ever corrects, which is why nothing here builds one.
 //
 #ifndef _kernel_h
 #define _kernel_h
@@ -47,9 +54,7 @@
 #include <circle/actled.h>
 #include <circle/koptions.h>
 #include <circle/devicenameservice.h>
-#include <circle/screen.h>
 #include <circle/serial.h>
-#include <circle/device.h>
 #include <circle/exceptionhandler.h>
 #include <circle/interrupt.h>
 #include <circle/timer.h>
@@ -68,37 +73,6 @@ enum TShutdownMode
     ShutdownNone,
     ShutdownHalt,
     ShutdownReboot
-};
-
-// TWO DESTINATIONS FOR ONE LOG.
-//
-// Circle's logger writes to a single device. This is that device, and it
-// forwards every write to two: the serial port first, because that is the one
-// that settles the milestone and must not be delayed by the other, and the
-// screen after it.
-//
-// It is a device that reaches devices, so it is core 0's, exactly like the
-// two it forwards to. Everything that arrives here has already crossed from
-// whatever core wrote it, through the log ring the servo drains.
-class CTeeDevice : public CDevice
-{
-public:
-    CTeeDevice(CDevice *pFirst, CDevice *pSecond)
-        : m_pFirst(pFirst), m_pSecond(pSecond) {}
-
-    int Write(const void *pBuffer, size_t nCount) override
-    {
-        int nResult = m_pFirst != nullptr
-                          ? m_pFirst->Write(pBuffer, nCount)
-                          : (int)nCount;
-        if (m_pSecond != nullptr)
-            m_pSecond->Write(pBuffer, nCount);
-        return nResult;
-    }
-
-private:
-    CDevice *m_pFirst;
-    CDevice *m_pSecond;
 };
 
 // Secondary-core dispatch. A core handed no role parks: returning from Run()
@@ -130,12 +104,10 @@ private:
     CActLED             m_ActLED;
     CKernelOptions      m_Options;
     CDeviceNameService  m_DeviceNameService;
-    // The screen is a console here and nothing more. Nothing in this example
-    // initialises SDL video, so the framebuffer this takes is not one anything
-    // else wants.
-    CScreenDevice       m_Screen;
+    // The only console device this kernel owns. The screen is a second
+    // destination for the same log, and it belongs to circle-libsdl2 — there
+    // is no screen object here to hold.
     CSerialDevice       m_Serial;
-    CTeeDevice          m_Console;
     CExceptionHandler   m_ExceptionHandler;
     CInterruptSystem    m_Interrupt;
     CTimer              m_Timer;
