@@ -78,7 +78,7 @@ export BOARD CIRCLE_WORLDS SHIM FPC_COMPILER FPC_UNITS LIBFPC_HOME
 
 # ---------------------------------------------------------------------------
 
-EXAMPLES = m0
+EXAMPLES = m0 m2
 
 .PHONY: all lib examples clean-board rebuild help $(EXAMPLES)
 

@@ -40,18 +40,68 @@ timestamps to the second; Homebrew installs a current one as `gmake`.
 A host kernel builds the Pascal application by including `fpc-app.mk` after
 Circle's `Rules.mk` and before `circle-libsdl2`'s `sdl-app.mk`. Read that
 file's header for what it needs and what it hands back, and
-`examples/m0/Makefile` for the whole of a working consumer.
+`examples/m0/Makefile` for the whole of a working consumer. `examples/m2` is
+the same kernel with a Pascal program that prints.
 
 Free Pascal compiles the program to relocatable objects; Circle's own build
 does the link. The target refuses to produce an executable, deliberately, and
 `fpc-compile.sh` explains what that means for reading the compiler's result.
 
+## Console output
+
+`writeln` works, and it reaches the console the only way anything on the
+application core may: `circle-libsdl2`'s log channel. The Free Pascal runtime
+opens the standard text files on the C library's descriptor numbers, and the
+target's `do_write` recognises those three handles and hands the bytes to the
+log channel, which assembles them into lines and lets the core that owns the
+serial device print them. Nothing in this library, and nothing in a Pascal
+program, touches that device.
+
+Standard output and standard error arrive under separate tags, `pascal` and
+`pascal-err`, so the console tells them apart. The standard handles answer
+yes to Free Pascal's "is this a device" question, so a text file on one is
+emptied at the end of every `writeln` rather than when its buffer fills — a
+program that never ends still prints as it goes.
+
+The log channel cannot refuse a line, and it never blocks the core that
+writes: when its ring is full the line is dropped and counted, and the drain
+reports the loss on the console. `writeln` therefore always reports success.
+Read `circle-libsdl2/docs/LOGGING.md` for what that costs and how fast the
+console really is.
+
+### What writing can and cannot do without a heap
+
+**There is no heap yet.** `TMemoryManager` is a later milestone, so its
+function pointers are still nil and an allocation is a call through one of
+them. Writing stays on the right side of that line for:
+
+- string literals and `ShortString` values;
+- `Char`, and every integer type;
+- `Boolean` and `Real`;
+- field widths — the blanks go straight into the text file's buffer.
+
+Each of those becomes characters in the text file's own buffer, which lives
+inside the text record and never came from a heap. So does the line ending,
+and so does opening the standard files at start-up, because they are opened
+under an empty name and an empty name builds no string.
+
+`AnsiString` and `UnicodeString` are on the other side of it. Building one
+allocates before `writeln` is ever reached, a `UnicodeString` is converted to
+bytes through the widestring manager on every write, and an `AnsiString`
+whose code page differs from the text file's is converted the same way. None
+of that works until the memory manager is installed.
+
+An I/O error is on that side too. A non-zero `InOutRes` sends the runtime
+into its error path, which builds an exception object, so the failure that
+follows a failed write is an allocation fault rather than the error message.
+
 ## Status
 
-The library reaches M0: a Pascal program links into a Circle host kernel, on
-the application core, and the host kernel calls its entry point.
+The library reaches M2: a Pascal program links into a Circle host kernel on
+the application core, the host kernel calls its entry point, and what the
+program writes reaches the console through `circle-libsdl2`.
 
-Nothing else is implemented. There is no memory manager, no thread manager and
-no file, directory or console layer, so a Pascal program that allocates, opens
-or prints anything does not work yet — it links cleanly and fails when it
-runs.
+There is no memory manager, no thread manager, and no file or directory
+layer, and console input is not implemented, so a Pascal program that
+allocates, reads or opens anything does not work yet — it links cleanly and
+fails when it runs.
