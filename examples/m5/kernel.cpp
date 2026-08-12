@@ -17,11 +17,16 @@
 // card, having never gone through the Pascal file layer at all. A witness
 // that reads back is the writes having reached the real filesystem.
 //
-// THEN THIS KERNEL CLEARS THE CARD, and it has to, because the file service
-// carries no rmdir: the Pascal program can erase its files and cannot remove
-// the directory it made. That gap is circle-libsdl2's to record. It is not a
-// reason for the Pascal side to reach past the service, and it is not
-// something this kernel hides — it says so on the console.
+// TWO MORE THINGS THE GUEST'S OWN ACCOUNT CANNOT SETTLE. A directory the
+// Pascal program says it removed is looked for here, and the working
+// directory is asked for here. That second one is the interesting one: the
+// setting belongs to the filesystem, which lives on this core, so what the
+// Pascal program's ChDir did is readable here without going near the layer
+// that did it — and it is also the demonstration that the setting is one for
+// the whole board rather than one per core or one per thread.
+//
+// THEN THIS KERNEL CLEARS THE CARD. It steps out of the working directory
+// first, because the card refuses to remove the directory it is standing in.
 //
 // NOTHING HERE WRAPS THE C LIBRARY. circle-libfpc is the file layer and
 // points itself at the file service; the link-time `--wrap` in pi-games is
@@ -42,6 +47,10 @@ static const char From[] = "libfpc-m5";
 // m5.pas because this side has to find it without asking the guest.
 static const char WorkDir[]     = "/tmp-clf-m5";
 static const char WitnessPath[] = "/tmp-clf-m5/witness.txt";
+
+// The directory the Pascal program made and removed itself. It must not be on
+// the card when this kernel looks.
+static const char GoneDir[]     = "/tmp-clf-m5-gone";
 
 // ---------------------------------------------------------------------------
 // The gate between core 0 and the application core: the application must not
@@ -178,7 +187,7 @@ boolean CKernel::Initialize(void)
 // having never been near the Pascal file layer.
 // ---------------------------------------------------------------------------
 
-void CKernel::ReadTheWitness(void)
+boolean CKernel::ReadTheWitness(void)
 {
     FILE *pFile = fopen(WitnessPath, "r");
     if (pFile == nullptr)
@@ -188,7 +197,7 @@ void CKernel::ReadTheWitness(void)
                        "wrote it, so either the write did not reach the "
                        "filesystem or it reached a different one.",
                        WitnessPath);
-        return;
+        return FALSE;
     }
 
     char Line[256];
@@ -208,13 +217,62 @@ void CKernel::ReadTheWitness(void)
                    "C library. Pascal wrote them from core 1 through the file "
                    "service and has never touched this reader.",
                    nLines, WitnessPath, CMultiCoreSupport::ThisCore());
+    return nLines > 0;
+}
+
+// A directory the guest says it removed. Only the filesystem can settle
+// whether it went, and the filesystem is here.
+boolean CKernel::TheRemovedDirectoryIsGone(void)
+{
+    struct stat St;
+    const boolean bGone = (stat(GoneDir, &St) != 0);
+
+    m_Logger.Write(From, bGone ? LogNotice : LogError,
+                   "%s was made and removed by the Pascal program. This core "
+                   "finds it: %s",
+                   GoneDir,
+                   bGone ? "gone, which is what the guest reported"
+                         : "STILL THERE - the guest reported a removal that "
+                           "did not happen");
+    return bGone;
+}
+
+// Where the working directory is. It is one setting for the whole board, held
+// by the filesystem on this core, so this reading is the guest's ChDir seen
+// from outside the guest entirely.
+boolean CKernel::TheWorkingDirectoryIsWhereTheGuestLeftIt(void)
+{
+    char Cwd[256];
+    Cwd[0] = '\0';
+
+    if (getcwd(Cwd, sizeof Cwd) == nullptr)
+    {
+        m_Logger.Write(From, LogError,
+                       "this core cannot say what the working directory is, "
+                       "so the guest's ChDir cannot be checked from here.");
+        return FALSE;
+    }
+
+    const boolean bRight = (strcmp(Cwd, WorkDir) == 0);
+
+    m_Logger.Write(From, bRight ? LogNotice : LogError,
+                   "the working directory on core %u is \"%s\"; the Pascal "
+                   "program left it at \"%s\": %s",
+                   CMultiCoreSupport::ThisCore(), Cwd, WorkDir,
+                   bRight ? "they agree, so the guest's ChDir reached the "
+                            "filesystem and the setting is one for the whole "
+                            "board"
+                          : "THEY DO NOT AGREE");
+    return bRight;
 }
 
 void CKernel::ClearTheDirectory(void)
 {
-    // The witness first, then the directory it sat in. rmdir here is the C
-    // library's, on the core that owns the card; the Pascal program has no
-    // rmdir at all because the file service carries none.
+    // Out of the working directory first: the card refuses to remove the
+    // directory it is standing in, so a clean-up from inside it would fail
+    // for a reason that has nothing to do with anything above.
+    const int nOut = chdir("/");
+
     const int nWitness = remove(WitnessPath);
     const int nDir     = rmdir(WorkDir);
 
@@ -222,17 +280,14 @@ void CKernel::ClearTheDirectory(void)
     const boolean bGone = (stat(WorkDir, &St) != 0);
 
     m_Logger.Write(From, LogNotice,
-                   "clearing up: removed %s (%s), removed %s (%s).",
+                   "clearing up: stepped out to / (%s), removed %s (%s), "
+                   "removed %s (%s).",
+                   nOut == 0 ? "yes" : "no",
                    WitnessPath, nWitness == 0 ? "yes" : "no",
                    WorkDir, nDir == 0 ? "yes" : "no");
     m_Logger.Write(From, bGone ? LogNotice : LogError,
                    "the card no longer carries %s: %s",
                    WorkDir, bGone ? "yes" : "NO - IT IS STILL THERE");
-    m_Logger.Write(From, LogNotice,
-                   "the directory is this side's to remove because the file "
-                   "service carries no rmdir. That is a gap in "
-                   "circle-libsdl2, recorded there, and never a reason for "
-                   "the guest to reach the card itself.");
 }
 
 // ---------------------------------------------------------------------------
@@ -279,7 +334,21 @@ TShutdownMode CKernel::Run(void)
 
             m_Logger.Write(From, LogNotice,
                            "--- the host kernel's own look at the card ---");
-            ReadTheWitness();
+
+            const boolean bWitness = ReadTheWitness();
+            const boolean bGone    = TheRemovedDirectoryIsGone();
+            const boolean bCwd     = TheWorkingDirectoryIsWhereTheGuestLeftIt();
+            const boolean bAll     = bWitness && bGone && bCwd;
+
+            m_Logger.Write(From, bAll ? LogNotice : LogError,
+                           "the host kernel's three checks: witness %s, "
+                           "removed directory %s, working directory %s. "
+                           "This side %s.",
+                           bWitness ? "PASS" : "FAIL",
+                           bGone ? "PASS" : "FAIL",
+                           bCwd ? "PASS" : "FAIL",
+                           bAll ? "PASS" : "FAIL");
+
             ClearTheDirectory();
             m_Logger.Write(From, LogNotice, "M5: the host kernel has nothing "
                            "further to report.");

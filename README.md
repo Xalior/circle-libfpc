@@ -100,17 +100,28 @@ nothing preempts them, and no routine in the file layer gives the core away.
 `CircleOpenFileCount` reports how many entries are taken, which is what a
 program asks to see that closing a file gave its entry back.
 
-**Four operations have no channel and say so.** The file service carries no
-rename, no rmdir, no chdir and no getcwd, so `Rename`, `RmDir`, `ChDir` and
-`GetDir` set I/O result 1 and do nothing at all. The C library on this board
-has all four; reaching for one of them from the application core would run it
-on the core that does not own the card, which is the thing the whole layer
-exists to avoid. The missing channels belong in `circle-libsdl2`'s own backlog.
+**`Erase` refuses a directory.** Unlink on this board is the card's own, which
+removes an empty directory as readily as a file, and a Pascal program that
+writes `Erase` means a file. So the layer asks about the name first and reports
+"file not found" for a directory rather than removing it. That is the guard
+Free Pascal's unix target makes, for the same reason and with the same number.
+`RmDir` is how a directory goes.
 
-What that costs a program: there is no way to change the working directory or
-to ask what it is, so a relative name resolves against whatever the host kernel
-last set on the core that owns the card, and a program that wants to be sure of
-a name gives an absolute one.
+**The working directory is one setting for the whole board.** It belongs to the
+filesystem, which lives on the core that owns the card, so it is not per Pascal
+thread and not per core: `ChDir` from any thread moves every thread, and the
+host kernel's own file calls stand in the same directory afterwards. That is
+the reach a working directory has in a Pascal program anywhere — it belongs to
+the process rather than to a thread — with the host kernel inside the same
+process here.
+
+Nothing inside the guest can come between a change and the name that depends on
+it. Nothing preempts a Pascal thread, and a service call blocks inside
+`circle-libsdl2` without entering this library's scheduler, so no second Pascal
+thread runs between one thread's `ChDir` and its next open. The host kernel is
+the one thing outside that, and it shares the setting if it uses relative
+names. A program that will not rely on either agreement gives absolute names,
+which the setting does not affect.
 
 **A host kernel has to bring the card up itself**, on core 0, before it
 releases the application core — the EMMC device, the FAT mount, and the C
@@ -357,11 +368,13 @@ be, and there is no unwinding here that could put that right. Thread
 priorities are one value, so setting one reports that it was not set.
 
 The file and directory layer is written and built, and `examples/m5` is the
-image that puts it to the board. That image has not run there either. It
-writes only under `/tmp-clf-m5`, a directory of its own making, erases its own
-files, and leaves one witness behind for the host kernel to read back from the
-core that owns the card and then remove — the directory included, because the
-file service carries no rmdir.
+image that puts it to the board. That image has not run there either. It works
+under two directories of its own making, `/tmp-clf-m5` and `/tmp-clf-m5-gone`,
+and touches nothing outside them: it removes the second itself, erases its own
+files out of the first, and leaves one witness in it for the host kernel to
+read back from the core that owns the card and then remove. It also leaves the
+working directory inside `/tmp-clf-m5`, so the host kernel can read that on the
+same core and see for itself where `ChDir` put it.
 
 There is no calendar time, no console input, and no `SysUtils`, so a Pascal
 program that asks the date, reads the keyboard, or uses the `SysUtils` file

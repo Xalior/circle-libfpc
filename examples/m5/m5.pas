@@ -6,6 +6,11 @@
   what it wrote reads back what it wrote; and nothing in the library reached
   the card itself.
 
+  THE REST OF THE FILE LAYER IS PROVED HERE TOO, because it is the same layer
+  and the same service: renaming, removing a directory, changing the working
+  directory and asking what it is, and the one refusal this layer makes for
+  itself — Erase names a file, so a directory is refused rather than removed.
+
   THE CARD IS A DEVICE AND THIS CORE DOES NOT OWN ONE. Every file operation
   below is an ordinary Pascal file statement — Rewrite, BlockWrite, Seek,
   Reset, readln. What is underneath them is this target's sysfile.inc, which
@@ -24,13 +29,21 @@
   prints the difference — which is the size of the position error rather than
   merely the fact of one.
 
-  WHAT THIS PROGRAM PUTS ON THE CARD, AND WHERE. One directory of its own
-  making, /tmp-clf-m5, with an obviously temporary name and nowhere near the
-  boot path. Inside it: records.bin and lines.txt, both erased by this
-  program before it ends, and witness.txt, which is left on purpose for the
-  host kernel to read back from the core that owns the card. The kernel
-  removes the witness and the directory afterwards, because the file service
-  carries no rmdir and this program therefore cannot.
+  WHAT THIS PROGRAM PUTS ON THE CARD, AND WHERE. Two directories of its own
+  making, /tmp-clf-m5 and /tmp-clf-m5-gone, both with obviously temporary
+  names and nowhere near the boot path. Everything this program writes is
+  inside one of them, and everything it writes is erased before it ends
+  except witness.txt, which is left on purpose for the host kernel to read
+  back from the core that owns the card. /tmp-clf-m5-gone is made and removed
+  by this program itself, and the host kernel checks afterwards that it is
+  really absent from the card; /tmp-clf-m5 has to outlive this program
+  because the witness is in it, so the kernel removes that one.
+
+  WHERE THIS PROGRAM LEAVES THE WORKING DIRECTORY, AND WHY. Inside
+  /tmp-clf-m5, deliberately. The working directory is one setting for the
+  whole board, held on the core that owns the card, so the host kernel can
+  ask for it there when this program has ended — which is a check of ChDir
+  that does not go through this layer at all.
 
   I/O CHECKING IS OFF THROUGHOUT AND THAT IS DELIBERATE. This target builds
   the System unit alone, and nothing has replaced the runtime's default error
@@ -54,6 +67,32 @@ const
   WitnessName = WorkDir + '/witness.txt';
   AbsentName  = WorkDir + '/no-such-file.bin';
   RenamedName = WorkDir + '/no-such-file-renamed.bin';
+
+  { Section 6 renames this to that, and reads the records back out of the new
+    name to see that the file moved rather than being made again empty. }
+  RenameFrom  = WorkDir + '/before-rename.bin';
+  RenameTo    = WorkDir + '/after-rename.bin';
+  RenameCount = 24;
+
+  { Section 7's directories. SubDir is made, filled, emptied and removed
+    inside the working directory. GoneDir is made and removed at the top of
+    the volume, and the host kernel looks for it afterwards on the core that
+    owns the card: a directory this program says it removed and that is still
+    there would be caught by that look and by nothing this program can do. }
+  SubDir      = WorkDir + '/sub';
+  SubFileName = SubDir + '/occupant.bin';
+  GoneDir     = '/tmp-clf-m5-gone';
+
+  { Section 8 writes this with a RELATIVE name while the working directory is
+    WorkDir, and reads it back by its absolute name from somewhere else. A
+    ChDir that changed nothing would put it at the top of the volume, where
+    the absolute name does not point. }
+  RelativeName = 'relative.txt';
+  RelativeFull = WorkDir + '/' + RelativeName;
+  RelativeText = 'written by a relative name';
+
+  { Section 9 makes this and asks Erase to remove it. }
+  GuardDir    = WorkDir + '/erase-guard';
 
   { The binary file: how many records, and how big one is. Sixteen bytes each
     and five hundred and twelve of them is eight kilobytes, which is more
@@ -81,11 +120,12 @@ const
 
   { Free Pascal's own I/O result numbers, named where this program expects
     one, because a bare number in a verdict says nothing to the reader.
-    IOR_NO_CHANNEL is what this target reports for an operation the file
-    service carries no channel for. }
+    IOR_DENIED is the number the card's own "denied" becomes, and it covers
+    both a directory that already exists and one that is not empty. }
   IOR_OK         = 0;
-  IOR_NO_CHANNEL = 1;
   IOR_NOT_FOUND  = 2;
+  IOR_NO_PATH    = 3;
+  IOR_DENIED     = 5;
   IOR_EXISTS     = 5;
 
 type
@@ -202,7 +242,7 @@ var
   Good: Boolean;
 begin
   writeln;
-  writeln('--- 1. the working directory ---');
+  writeln('--- 1. the directory this run works in ---');
   writeln('this program runs on core ', CircleCurrentCore,
           ', which owns no device and reaches the card through nothing but ',
           'the file service.');
@@ -230,7 +270,7 @@ begin
 
   Good := (Res = IOR_OK) or (Res = IOR_EXISTS);
   ProveTheDirectory := Good;
-  writeln('1. the working directory ', Verdict(Good));
+  writeln('1. the directory this run works in ', Verdict(Good));
 end;
 
 
@@ -708,21 +748,380 @@ end;
 
 
 {****************************************************************************
-  6. What fails, and how loudly. An error is as much a part of this layer as
-     a success, and an operation the file service carries no channel for has
-     to say so rather than quietly do nothing.
+  6. Rename. The file has to MOVE — the old name gone, the new name holding
+     what was written, byte for byte.
+****************************************************************************}
+
+function ProveRename: Boolean;
+var
+  F: file;
+  S: TStamp;
+  I: LongInt;
+  Res, ResRename, ResOldGone, ResMissing: Word;
+  MadeOk, RenamedOk, NewOpenOk, Good: Boolean;
+  Bad: LongInt;
+  NewSize: Int64;
+begin
+  writeln;
+  writeln('--- 6. rename ---');
+
+  Bad := 0;
+  NewSize := -1;
+  ResOldGone := IOR_OK;
+  NewOpenOk := False;
+
+  { Something worth moving: records that say which one they are, so a new
+    name holding the wrong bytes is caught as surely as one holding none. }
+  MadeOk := True;
+  Assign(F, RenameFrom);
+  Rewrite(F, RecordSize);
+  Res := IOR;
+  if Res <> IOR_OK then
+    begin
+      writeln('could not create ', RenameFrom, ' - I/O result ', Res, '.');
+      writeln('6. rename ', Verdict(False));
+      ProveRename := False;
+      exit;
+    end;
+  for I := 0 to RenameCount - 1 do
+    begin
+      BuildStamp(LongWord(I), S);
+      BlockWrite(F, S, 1);
+      if IOR <> IOR_OK then
+        begin
+          MadeOk := False;
+          break;
+        end;
+    end;
+  Close(F);
+  if IOR <> IOR_OK then MadeOk := False;
+
+  Assign(F, RenameFrom);
+  Rename(F, RenameTo);
+  ResRename := IOR;
+  RenamedOk := (ResRename = IOR_OK);
+  if not RenamedOk then
+    writeln('the rename failed - I/O result ', ResRename, '.');
+
+  { The old name must be gone. A rename that copied instead of moving, or
+    that did nothing and reported success, is caught here. }
+  Assign(F, RenameFrom);
+  Reset(F, RecordSize);
+  ResOldGone := IOR;
+  if ResOldGone = IOR_OK then
+    begin
+      Close(F);
+      Res := IOR;
+    end;
+
+  { The new name must hold what was written. }
+  Assign(F, RenameTo);
+  Reset(F, RecordSize);
+  Res := IOR;
+  NewOpenOk := (Res = IOR_OK);
+  if NewOpenOk then
+    begin
+      NewSize := FileSize(F);
+      if IOR <> IOR_OK then NewSize := -1;
+      for I := 0 to RenameCount - 1 do
+        begin
+          BlockRead(F, S, 1);
+          if IOR <> IOR_OK then
+            begin
+              inc(Bad);
+              break;
+            end;
+          if not StampIsRight(LongWord(I), S) then
+            inc(Bad);
+        end;
+      Close(F);
+      if IOR <> IOR_OK then NewOpenOk := False;
+    end
+  else
+    writeln('could not open ', RenameTo, ' after the rename - I/O result ',
+            Res, '.');
+
+  { A rename of a name that is not there has to report the card's own answer
+    rather than a success. }
+  Assign(F, AbsentName);
+  Rename(F, RenamedName);
+  ResMissing := IOR;
+
+  { Clearing up after this section. }
+  Assign(F, RenameTo);
+  Erase(F);
+  Res := IOR;
+
+  writeln('renamed ', RenameFrom, ' to ', RenameTo, ': I/O result ',
+          ResRename, ' on the rename itself.');
+  writeln('opening the OLD name afterwards -> I/O result ', ResOldGone,
+          ', expected ', IOR_NOT_FOUND, ' (it must be gone).');
+  writeln('the new name is ', NewSize, ' records long and ', RenameCount,
+          ' were written; ', RenameCount - Bad, ' of them read back as ',
+          'themselves.');
+  writeln('rename a file that is not there -> I/O result ', ResMissing,
+          ', expected ', IOR_NOT_FOUND, '.');
+  writeln('tolerance: none. A rename that reported success and left the old ',
+          'name in place, or that made an empty file under the new one, ',
+          'fails a line above.');
+
+  Good := MadeOk and RenamedOk and NewOpenOk and (Bad = 0) and
+          (ResOldGone = IOR_NOT_FOUND) and (NewSize = RenameCount) and
+          (ResMissing = IOR_NOT_FOUND);
+  ProveRename := Good;
+  writeln('6. rename ', Verdict(Good));
+end;
+
+
+{****************************************************************************
+  7. Removing a directory: refused while something is in it, done once it is
+     empty, and really gone afterwards.
+****************************************************************************}
+
+function ProveRmDir: Boolean;
+var
+  F: file;
+  S: TStamp;
+  ResMake, ResOccupied, ResEmptied, ResRemade, ResMissing: Word;
+  ResGone, ResGoneMake: Word;
+  Res: Word;
+  FilledOk, Good: Boolean;
+begin
+  writeln;
+  writeln('--- 7. removing a directory ---');
+
+  FilledOk := True;
+
+  { A directory with something in it must NOT be removed. }
+  MkDir(SubDir);
+  ResMake := IOR;
+  if (ResMake <> IOR_OK) and (ResMake <> IOR_EXISTS) then
+    begin
+      writeln('could not make ', SubDir, ' - I/O result ', ResMake, '.');
+      writeln('7. removing a directory ', Verdict(False));
+      ProveRmDir := False;
+      exit;
+    end;
+
+  Assign(F, SubFileName);
+  Rewrite(F, RecordSize);
+  Res := IOR;
+  if Res = IOR_OK then
+    begin
+      BuildStamp(1, S);
+      BlockWrite(F, S, 1);
+      if IOR <> IOR_OK then FilledOk := False;
+      Close(F);
+      if IOR <> IOR_OK then FilledOk := False;
+    end
+  else
+    begin
+      FilledOk := False;
+      writeln('could not put a file in ', SubDir, ' - I/O result ', Res, '.');
+    end;
+
+  RmDir(SubDir);
+  ResOccupied := IOR;
+
+  Assign(F, SubFileName);
+  Erase(F);
+  if IOR <> IOR_OK then FilledOk := False;
+
+  { Empty now, so it must go. }
+  RmDir(SubDir);
+  ResEmptied := IOR;
+
+  { AND IT MUST REALLY BE GONE. Making it again is the question that answers
+    that from this side: a directory still on the card reports that it
+    exists, and one that was removed is made afresh. }
+  MkDir(SubDir);
+  ResRemade := IOR;
+  RmDir(SubDir);
+  Res := IOR;
+
+  { A name that is not there. }
+  RmDir(WorkDir + '/no-such-dir');
+  ResMissing := IOR;
+
+  { GoneDir is the one the host kernel checks. It is made and removed here,
+    at the top of the volume, and this program says nothing more about it —
+    the kernel looks for it afterwards, on the core that owns the card,
+    through the C library, having never been through this layer. }
+  MkDir(GoneDir);
+  ResGoneMake := IOR;
+  RmDir(GoneDir);
+  ResGone := IOR;
+
+  writeln('remove a directory with a file in it -> I/O result ', ResOccupied,
+          ', expected ', IOR_DENIED, ' (it is not empty).');
+  writeln('remove it once emptied               -> I/O result ', ResEmptied,
+          ', expected ', IOR_OK, '.');
+  writeln('make it again afterwards             -> I/O result ', ResRemade,
+          ', expected ', IOR_OK, '. Anything else means it never went.');
+  writeln('remove a directory that is not there -> I/O result ', ResMissing,
+          ', expected ', IOR_NOT_FOUND, '.');
+  writeln('made and removed ', GoneDir, ': I/O results ', ResGoneMake,
+          ' and ', ResGone, '. The host kernel looks for it afterwards on ',
+          'the core that owns the card, which is a check this program ',
+          'cannot fake.');
+  writeln('tolerance: none. Removing a directory that is not empty is the ',
+          'one refusal here that comes from the card rather than from this ',
+          'layer, and it has to be as clear as the successes around it.');
+
+  Good := FilledOk and (ResOccupied = IOR_DENIED) and
+          (ResEmptied = IOR_OK) and (ResRemade = IOR_OK) and
+          (ResMissing = IOR_NOT_FOUND) and
+          ((ResGoneMake = IOR_OK) or (ResGoneMake = IOR_EXISTS)) and
+          (ResGone = IOR_OK);
+  ProveRmDir := Good;
+  writeln('7. removing a directory ', Verdict(Good));
+end;
+
+
+{****************************************************************************
+  8. The working directory: changing it, asking for it, and proving that a
+     relative name really resolves against it.
+****************************************************************************}
+
+function ProveWorkingDirectory: Boolean;
+var
+  T: Text;
+  F: file;
+  StartDir, InWork, AfterFail, BackHome: ShortString;
+  Got: ShortString;
+  ResStart, ResIn, ResBack, ResBad, ResAfterFail, ResLeave: Word;
+  Res: Word;
+  WroteRelativeOk, ReadAbsoluteOk, Good: Boolean;
+begin
+  writeln;
+  writeln('--- 8. the working directory ---');
+
+  StartDir := 'unset';
+  InWork := 'unset';
+  AfterFail := 'unset';
+  BackHome := 'unset';
+  WroteRelativeOk := False;
+  ReadAbsoluteOk := False;
+
+  GetDir(0, StartDir);
+  ResStart := IOR;
+
+  ChDir(WorkDir);
+  ResIn := IOR;
+  GetDir(0, InWork);
+  if IOR <> IOR_OK then InWork := 'unset';
+
+  { THE PART THAT PROVES THE CHANGE REACHED THE CARD. This name has no
+    directory in it at all, so where the file lands is decided entirely by
+    the working directory. It is read back below by its absolute name from
+    somewhere else, and a ChDir that changed nothing would have put it at the
+    top of the volume where that name does not point. }
+  Assign(T, RelativeName);
+  Rewrite(T);
+  Res := IOR;
+  if Res = IOR_OK then
+    begin
+      writeln(T, RelativeText);
+      if IOR <> IOR_OK then
+        WroteRelativeOk := False
+      else
+        WroteRelativeOk := True;
+      Close(T);
+      if IOR <> IOR_OK then WroteRelativeOk := False;
+    end
+  else
+    writeln('could not create the relative name ', RelativeName,
+            ' - I/O result ', Res, '.');
+
+  { A directory that is not there must be refused, and must leave the
+    working directory where it was. }
+  ChDir(WorkDir + '/no-such-dir');
+  ResBad := IOR;
+  GetDir(0, AfterFail);
+  ResAfterFail := IOR;
+
+  { Back where the run started, then read the file by its absolute name. }
+  ChDir(StartDir);
+  ResBack := IOR;
+  GetDir(0, BackHome);
+  if IOR <> IOR_OK then BackHome := 'unset';
+
+  Got := '';
+  Assign(T, RelativeFull);
+  Reset(T);
+  Res := IOR;
+  if Res = IOR_OK then
+    begin
+      readln(T, Got);
+      if IOR <> IOR_OK then Got := '';
+      Close(T);
+      Res := IOR;
+      ReadAbsoluteOk := (Got = RelativeText);
+    end
+  else
+    writeln('could not open ', RelativeFull, ' - I/O result ', Res,
+            '. The relative name did not land where the working directory ',
+            'said it would.');
+
+  Assign(F, RelativeFull);
+  Erase(F);
+  Res := IOR;
+
+  { LEFT INSIDE THE WORKING DIRECTORY ON PURPOSE. The setting belongs to the
+    core that owns the card, so the host kernel can ask for it there once
+    this program has ended — a reading of ChDir that never passes through
+    this layer. }
+  ChDir(WorkDir);
+  ResLeave := IOR;
+
+  writeln('the run started in "', StartDir, '" - I/O result ', ResStart,
+          ', expected ', IOR_OK, '.');
+  writeln('after changing to ', WorkDir, ' it reported "', InWork,
+          '" - I/O result ', ResIn, ' on the change.');
+  writeln('a file written as "', RelativeName,
+          '", with no directory in the name, was read back as "',
+          RelativeFull, '": ', YesNo(ReadAbsoluteOk), '.');
+  writeln('change to a directory that is not there -> I/O result ', ResBad,
+          ', expected ', IOR_NO_PATH, ' (path not found).');
+  writeln('and the working directory afterwards was "', AfterFail,
+          '", which must be unchanged.');
+  writeln('changed back to "', BackHome, '" - I/O result ', ResBack, '.');
+  writeln('this program now leaves the working directory at ', WorkDir,
+          ' - I/O result ', ResLeave,
+          ' - for the host kernel to read on the core that owns the card.');
+  writeln('tolerance: none, and the line about "', RelativeName,
+          '" is the one that cannot be faked - a name with no directory in ',
+          'it lands wherever the working directory really is, so reading it ',
+          'back by an absolute name is the card answering rather than this ',
+          'layer.');
+
+  Good := (ResStart = IOR_OK) and (StartDir <> '') and
+          (ResIn = IOR_OK) and (InWork = WorkDir) and
+          WroteRelativeOk and ReadAbsoluteOk and
+          (ResBad = IOR_NO_PATH) and (ResAfterFail = IOR_OK) and
+          (AfterFail = WorkDir) and
+          (ResBack = IOR_OK) and (BackHome = StartDir) and
+          (ResLeave = IOR_OK);
+  ProveWorkingDirectory := Good;
+  writeln('8. the working directory ', Verdict(Good));
+end;
+
+
+{****************************************************************************
+  9. What fails, and how loudly. An error is as much a part of this layer as
+     a success, and the one refusal this layer makes for itself has to be as
+     loud as the card's own.
 ****************************************************************************}
 
 function ProveFailures: Boolean;
 var
   F: file;
-  Dir: ShortString;
-  ResMissing, ResErase, ResRename: Word;
-  ResRmDir, ResChDir, ResGetDir: Word;
+  ResMissing, ResErase: Word;
+  ResGuardMake, ResEraseDir, ResGuardGone: Word;
   Good: Boolean;
 begin
   writeln;
-  writeln('--- 6. failures, and the operations with no channel ---');
+  writeln('--- 9. failures, and what Erase refuses ---');
 
   { A name that is not there. This is the error translation working: the
     service reports the C library's own "no such file", and this target turns
@@ -735,54 +1134,49 @@ begin
   Erase(F);
   ResErase := IOR;
 
-  { RENAME HAS NO CHANNEL IN THE FILE SERVICE. The C library on this board
-    has one; reaching for it from here would run it on the core that does not
-    own the card. So this target reports that it did nothing, and the missing
-    channel is recorded against circle-libsdl2. The names are a file that
-    does not exist and one that will not either. }
-  Assign(F, AbsentName);
-  Rename(F, RenamedName);
-  ResRename := IOR;
+  { ERASE MUST REFUSE A DIRECTORY. Unlink on this board is the card's own,
+    and the card's own removes an empty directory as readily as a file. A
+    Pascal program that writes Erase means a file, so this layer asks about
+    the name first and refuses.
 
-  RmDir(WorkDir + '/no-such-dir');
-  ResRmDir := IOR;
+    THE PROOF THAT THE REFUSAL HELD is the RmDir below: a directory Erase had
+    quietly removed would not be there to remove. }
+  MkDir(GuardDir);
+  ResGuardMake := IOR;
 
-  ChDir(WorkDir);
-  ResChDir := IOR;
+  Assign(F, GuardDir);
+  Erase(F);
+  ResEraseDir := IOR;
 
-  Dir := 'unset';
-  GetDir(0, Dir);
-  ResGetDir := IOR;
+  RmDir(GuardDir);
+  ResGuardGone := IOR;
 
-  writeln('open a file that is not there  -> I/O result ', ResMissing,
+  writeln('open a file that is not there   -> I/O result ', ResMissing,
           ', expected ', IOR_NOT_FOUND, ' (file not found)');
-  writeln('erase a file that is not there -> I/O result ', ResErase,
+  writeln('erase a file that is not there  -> I/O result ', ResErase,
           ', expected ', IOR_NOT_FOUND, ' (file not found)');
-  writeln('rename                         -> I/O result ', ResRename,
-          ', expected ', IOR_NO_CHANNEL, ' (the service carries no rename)');
-  writeln('rmdir                          -> I/O result ', ResRmDir,
-          ', expected ', IOR_NO_CHANNEL, ' (the service carries no rmdir)');
-  writeln('chdir                          -> I/O result ', ResChDir,
-          ', expected ', IOR_NO_CHANNEL, ' (the service carries no chdir)');
-  writeln('getdir                         -> I/O result ', ResGetDir,
-          ', expected ', IOR_NO_CHANNEL, ' (the service carries no getcwd)');
-  writeln('the directory getdir wrote back: "', Dir, '", expected empty.');
-  writeln('tolerance: none, and the four with no channel matter most. ',
-          'Reporting 0 for one of them would be this layer claiming a ',
-          'success it did not have; reporting a card error would be it ',
-          'blaming the card for a channel that was never there.');
+  writeln('erase a DIRECTORY               -> I/O result ', ResEraseDir,
+          ', expected ', IOR_NOT_FOUND,
+          ' (as a file, it is not there). Making it reported ',
+          ResGuardMake, '.');
+  writeln('and removing that directory afterwards -> I/O result ',
+          ResGuardGone, ', expected ', IOR_OK,
+          '. That is the proof Erase left it alone: a directory Erase had ',
+          'removed would report ', IOR_NOT_FOUND, ' here.');
+  writeln('tolerance: none. Reporting 0 for the erase of a directory would ',
+          'be this layer removing something a Pascal program never asked ',
+          'it to remove, and saying nothing about it.');
 
   Good := (ResMissing = IOR_NOT_FOUND) and (ResErase = IOR_NOT_FOUND) and
-          (ResRename = IOR_NO_CHANNEL) and (ResRmDir = IOR_NO_CHANNEL) and
-          (ResChDir = IOR_NO_CHANNEL) and (ResGetDir = IOR_NO_CHANNEL) and
-          (Dir = '');
+          ((ResGuardMake = IOR_OK) or (ResGuardMake = IOR_EXISTS)) and
+          (ResEraseDir = IOR_NOT_FOUND) and (ResGuardGone = IOR_OK);
   ProveFailures := Good;
-  writeln('6. failures, and the operations with no channel ', Verdict(Good));
+  writeln('9. failures, and what Erase refuses ', Verdict(Good));
 end;
 
 
 {****************************************************************************
-  7. The witness the host kernel reads, and the clearing up.
+  10. The witness the host kernel reads, and the clearing up.
 ****************************************************************************}
 
 function ProveWitnessAndCleanUp: Boolean;
@@ -794,7 +1188,7 @@ var
   StillOpen: LongWord;
 begin
   writeln;
-  writeln('--- 7. the witness, and clearing up ---');
+  writeln('--- 10. the witness, and clearing up ---');
 
   { ONE FILE IS LEFT ON THE CARD ON PURPOSE. Everything above is this program
     checking its own work through the same layer it wrote with, so a layer
@@ -844,15 +1238,15 @@ begin
   writeln('files this layer still has open: ', StillOpen,
           '. Every file above was closed, so anything but 0 is a leaked ',
           'entry.');
-  writeln(WorkDir, ' itself is left behind. The file service carries no ',
-          'rmdir, so this program cannot remove a directory and does not ',
-          'pretend to; the host kernel removes it on the core that owns ',
-          'the card.');
+  writeln(WorkDir, ' itself is left behind, because the witness is in it. ',
+          'Section 7 removed a directory of its own making instead, and the ',
+          'host kernel checks that one is gone; this one the kernel removes ',
+          'after it has read the witness.');
   writeln('tolerance: none.');
 
   Good := WitnessOk and ErasedRecords and ErasedLines and (StillOpen = 0);
   ProveWitnessAndCleanUp := Good;
-  writeln('7. the witness, and clearing up ', Verdict(Good));
+  writeln('10. the witness, and clearing up ', Verdict(Good));
 end;
 
 
@@ -890,12 +1284,19 @@ begin
   Ok := ProveSeek;              Passed := Ok and Passed;   Pace;
   Ok := ProveTextFiles;         Passed := Ok and Passed;   Pace;
   Ok := ProveTruncate;          Passed := Ok and Passed;   Pace;
+  Ok := ProveRename;            Passed := Ok and Passed;   Pace;
+  Ok := ProveRmDir;             Passed := Ok and Passed;   Pace;
+  Ok := ProveWorkingDirectory;  Passed := Ok and Passed;   Pace;
   Ok := ProveFailures;          Passed := Ok and Passed;   Pace;
   Ok := ProveWitnessAndCleanUp; Passed := Ok and Passed;   Pace;
 
   writeln;
   writeln('--- what this program touched ---');
-  writeln('the directory ', WorkDir, ', and nothing outside it.');
+  writeln('the directory ', WorkDir, ', which it leaves behind with the ',
+          'witness in it, and ', GoneDir, ', which it made and removed ',
+          'again. Nothing outside those two.');
+  writeln('the working directory is left at ', WorkDir,
+          ', for the host kernel to read on the core that owns the card.');
   writeln('this line is on core ', CircleCurrentCore,
           ', which is where the first line was.');
 

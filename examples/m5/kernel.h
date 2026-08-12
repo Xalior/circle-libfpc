@@ -21,13 +21,19 @@
 // its own. circle-libfpc IS the file layer, so it points itself at the file
 // service directly and this kernel wraps nothing.
 //
-// THE ONE THING THIS KERNEL READS FROM THE CARD IS THE WITNESS. The Pascal
-// program leaves one small file behind on purpose. This kernel opens it with
-// the C library, here on the core that owns the card, and prints what it
-// finds — a different reader, on a different core, that has never been
-// through the Pascal file layer. Then it removes the witness and the
-// directory, because the file service carries no rmdir and the Pascal program
-// therefore cannot remove a directory at all.
+// WHAT THIS KERNEL CHECKS FOR ITSELF, ON THE CORE THAT OWNS THE CARD. Three
+// things, all with the C library and none of them through the Pascal file
+// layer: the witness the Pascal program left behind reads back; a directory
+// the Pascal program says it removed is really absent; and the working
+// directory really is where the Pascal program says it left it. The last is
+// the one that could not be checked from inside the guest at all — the
+// setting lives here, on this core, and asking for it here is asking the
+// filesystem rather than asking the layer that changed it.
+//
+// Then this kernel clears up: it steps out of the working directory and
+// removes the witness and the directory it sat in. Those outlive the Pascal
+// program because the witness has to, not because the guest could not remove
+// them.
 //
 // WHERE THE CONSOLE LANDS IS THIS KERNEL'S DECISION, NEVER PASCAL'S. The
 // Pascal program writes into one channel and knows of no other; the drain
@@ -114,9 +120,12 @@ public:
 
 private:
     // What this kernel checks for itself, on the core that owns the card,
-    // after the Pascal program has ended.
-    void ReadTheWitness(void);
-    void ClearTheDirectory(void);
+    // after the Pascal program has ended. Each answers yes or no, and the
+    // caller reports the three together.
+    boolean ReadTheWitness(void);
+    boolean TheRemovedDirectoryIsGone(void);
+    boolean TheWorkingDirectoryIsWhereTheGuestLeftIt(void);
+    void    ClearTheDirectory(void);
 
     CActLED             m_ActLED;
     CKernelOptions      m_Options;
