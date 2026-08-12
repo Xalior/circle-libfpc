@@ -40,7 +40,6 @@
 #include <circle/timer.h>
 #include <circle/logger.h>
 #include <circle/sched/scheduler.h>
-#include <circle/cputhrottle.h>
 #include <circle/multicore.h>
 #include <circle/memory.h>
 #include <circle/types.h>
@@ -86,9 +85,24 @@ private:
     // onto the console and what feeds the presentation core. A host that
     // stopped yielding would stop both.
     CScheduler          m_Scheduler;
-    // Circle boots at idle clock and the shim reaches this object through
-    // CCPUThrottle::Get(), which asserts rather than returning null.
-    CCPUThrottle        m_CPUThrottle;
+    // THERE IS NO CCPUThrottle HERE AND THERE MUST NOT BE. The CPU clock and
+    // the case fan belong to circle-libsdl2: it creates that object inside
+    // SDL_Init and drives it from whichever per-frame heartbeat is live. Circle
+    // permits exactly one in a system and halts in the constructor of a second
+    // — `assertion failed: s_pThis == 0' — so a kernel that declares one of its
+    // own stops the board the moment the application initialises SDL. The
+    // library cannot compensate either, because CCPUThrottle::Get() halts
+    // rather than reporting an absence, so it can never be asked the question.
+    //
+    // m_Options above is what makes the library's throttle possible: Circle
+    // reads the fan pin through CKernelOptions::Get() and dereferences the
+    // answer without checking it, so a kernel that declares no options gives
+    // that constructor a null to follow.
+    //
+    // This kernel configures no I2C, no SPI and no mini UART — the console is a
+    // PL011 UART, whose baud rate does not come from the core clock — so it
+    // needs no CSDL2CircleHardware member either, and hardware management
+    // starts at SDL_Init where the library puts it.
     CSplitCores         m_Cores;
 };
 
