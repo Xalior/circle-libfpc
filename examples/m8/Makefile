@@ -90,15 +90,17 @@ INCLUDE := -I $(LIBFPC_HOME)/include -I $(SHIM)/include \
 # here as a source directory so that the compiler builds it beside the program
 # the way it does for the game that shipped it. A port is then a relink.
 #
-# SDL2_PASCAL_UNITS says where that binding is. There is no default worth
-# having — a wrong path would produce a compile error naming a unit rather
-# than naming this setting — so a missing one is said here instead.
+# SDL2_PASCAL_UNITS says where that binding is. It defaults to this
+# library's own vendored copy — third-party/sdl2-for-pascal, which already
+# carries the CIRCLESDL2 patch described in patches/README.md — so this
+# example builds with nothing pointing outside the repository. A program
+# porting a different copy of the binding overrides it.
 #
 # THE SECOND DIRECTORY IS THIS LIBRARY'S OWN, and it holds one unit:
 # circle-libsdl2's Circle extensions, which no SDL binding carries because
 # they are not in SDL's headers. An application names it beside its binding,
 # exactly as a C application adds one #include.
-SDL2_PASCAL_UNITS ?=
+SDL2_PASCAL_UNITS ?= $(LIBFPC_HOME)/third-party/sdl2-for-pascal
 ifeq ($(strip $(SDL2_PASCAL_UNITS)),)
 $(error set SDL2_PASCAL_UNITS to the directory holding the Pascal SDL2 binding (sdl2.pas and its .inc files))
 endif

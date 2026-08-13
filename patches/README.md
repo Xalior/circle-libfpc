@@ -14,6 +14,13 @@ Apply it to a copy of the binding and point `SDL2_PASCAL_UNITS` at the result:
 patch -p1 -d <binding-dir> < patches/sdl2-for-pascal-circlesdl2.patch
 ```
 
+`../third-party/sdl2-for-pascal/` already carries the result of that command,
+along with the binding's own licence and where that copy was cut from. It is
+the directory `examples/m8` points `SDL2_PASCAL_UNITS` at by default. This
+patch file stays here so its diff is still readable on its own, and so
+updating the vendored copy to a newer upstream revision has something exact
+to reapply.
+
 ### What it does, and why it is needed
 
 The binding writes every declaration as `external SDL_LibName`, and declares
