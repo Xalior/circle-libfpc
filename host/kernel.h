@@ -2,12 +2,6 @@
 // kernel.h - the host kernel for a Pascal program on a bare-metal Raspberry
 // Pi.
 //
-// THE GAME IS UNCHANGED WINDOWS FREE PASCAL, and everything that makes it run
-// here is on this side of the line. It is M7's card bring-up and M8's
-// presentation core in one kernel, because this is the first application that
-// needs both: it reads its sprites, its backgrounds and its sounds off the
-// card, and it puts a picture on the screen sixty times a second.
-//
 //   core 0   the devices. The card, the USB bus, the serial console, and the
 //            firmware mailbox. Everything the guest cannot touch.
 //   core 1   the game. This is the whole of the computer the Pascal program
@@ -15,26 +9,17 @@
 //   core 2   the presentation core. A finished frame goes in on core 1 and a
 //            scanout comes out here, scaled onto whatever panel is attached.
 //
-// THIS KERNEL MAKES TWO DECLARATIONS ON THE GAME'S BEHALF, both of them
-// before SDL_Init, both of them things a desktop SDL would have worked out
-// for itself and this one cannot:
+// This kernel makes two declarations on the game's behalf, both before
+// SDL_Init and both things a desktop SDL would otherwise work out for
+// itself:
 //
-//   the base path         where the game's files were put on the card. A
-//                         desktop derives it from the running image; there is
-//                         no image here.
-//   the working directory the same answer again, for the RELATIVE paths the
+//   the base path         where the game's files were put on the card.
+//   the working directory the same answer again, for the relative paths the
 //                         game uses for its sprites and backgrounds. The
 //                         filesystem's own current directory lives on core 0
 //                         and is shared by every core.
 //
-// A REAL GAME MAKES NEITHER OF THESE CALLS, which is exactly why the kernel
-// must decide them itself.
-//
-// THE VIRTUAL DISPLAY IS NOT ONE OF THEM. See kernel.cpp: the size the game
-// is to be given is a build-time fact of this port, stated once in the
-// port's own Makefile and stamped into the image's own boot argument block,
-// which circle-libsdl2 reads for itself before the game ever asks for a
-// window.
+// The virtual display is not one of them; see kernel.cpp.
 //
 #ifndef _kernel_h
 #define _kernel_h
@@ -98,12 +83,11 @@ private:
     // what performs every file call the game makes, and what feeds the
     // presentation core. A host that stopped yielding would stop all four.
     CScheduler          m_Scheduler;
-    // THERE IS NO CCPUThrottle HERE AND THERE MUST NOT BE. The CPU clock and
-    // the case fan belong to circle-libsdl2, which constructs that object
-    // itself. Circle permits exactly one in a system and halts in the
-    // constructor of a second.
-    // THE CARD, AND EVERYTHING ON TOP OF IT. All of it is core 0's, and all of
-    // it is up before the application core is released - the game's very first
+    // No CCPUThrottle is declared here: the CPU clock and the case fan
+    // belong to circle-libsdl2, which constructs that object itself, and
+    // Circle halts in the constructor of a second one in the same system.
+    // The card and everything on top of it, all of it core 0's and all of
+    // it up before the application core is released, since the game's first
     // act is to read a settings file.
     CEMMCDevice         m_EMMC;
     FATFS               m_FileSystem;

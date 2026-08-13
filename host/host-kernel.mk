@@ -1,5 +1,5 @@
 #
-# host-kernel.mk — the generic Circle host kernel a Free Pascal program runs
+# host-kernel.mk -- the generic Circle host kernel a Free Pascal program runs
 # inside.
 #
 # INCLUDE IT from a port's own Makefile, AFTER Circle's Rules.mk and BEFORE
@@ -25,21 +25,20 @@
 # the SD card and its FAT filesystem, the C library's standard descriptors),
 # starts the secondary cores, declares the card's game directory as both the
 # working directory and the SDL base path, arms the core split, releases the
-# application core to call the Pascal program's entry point, and serves it —
+# application core to call the Pascal program's entry point, and serves it --
 # draining its log, pumping USB, performing its file calls, feeding the
-# presentation core — until it returns, at which point Circle reboots the
+# presentation core -- until it returns, at which point Circle reboots the
 # board. Read host/kernel.h for the full shape and host/kernel.cpp for why
 # each step is where it is.
 #
 # THE VIRTUAL DISPLAY IS NOT DECLARED HERE. circle-libsdl2 reads it out of the
-# image's own boot argument block, which that library's own tools/stamp-
-# bootargs writes at link time — a port states the size once, in its own
-# Makefile, the same porter value RAPI_GAME_DIR below sits beside.
+# image's own boot argument block. A port states the size once, in its own
+# Makefile, beside the RAPI_GAME_DIR porter value below.
 #
 # WHAT COMES OUT
 #
 #   $(HOST_KERNEL_OBJS)   main.o and kernel.o, built under $(OBJDIR). Put them
-#                         in OBJS with the Pascal program's own object —
+#                         in OBJS with the Pascal program's own object --
 #                         sdl-app-init.ld defers the constructors of anything
 #                         arriving as an ARCHIVE member until the kernel
 #                         exists, and runs anything arriving as an OBJECT
@@ -55,7 +54,7 @@
 #
 # WHAT IT TAKES IF IT IS GIVEN
 #
-#   RAPI_GAME_DIR     where the Pascal program's files are on the card — the
+#   RAPI_GAME_DIR     where the Pascal program's files are on the card -- the
 #                     working directory this kernel sets, and the base path it
 #                     declares to SDL. A build parameter because the card
 #                     layout is the consumer's decision, never this kernel's:
@@ -74,7 +73,7 @@ ifeq ($(strip $(OBJDIR)),)
 $(error host-kernel.mk: set OBJDIR before including this file)
 endif
 
-# This directory, captured before anything else can change MAKEFILE_LIST —
+# This directory, captured before anything else can change MAKEFILE_LIST --
 # the same self-locating trick sdl-app.mk uses, so a port names nothing about
 # where this kernel's own sources live.
 HOST_KERNEL_DIR := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))

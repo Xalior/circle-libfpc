@@ -1,5 +1,5 @@
 //
-// main.cpp — classic Circle kernel entry.
+// main.cpp -- classic Circle kernel entry.
 //
 // The Pascal program's own C entry is renamed out of the way when it is
 // compiled (fpc-app.mk, -XM), because Free Pascal calls it `main` too and
