@@ -3,4 +3,4 @@
 	url = git@github.com:Xalior/circle-libsdl2.git
 [submodule "fpc"]
 	path = fpc
-	url = git@github.com:Xalior/fpc-circlesdl2.git
+	url = git@github.com:Xalior/fpc.git
