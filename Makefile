@@ -58,12 +58,12 @@ NOT_DRY_RUN  = $(if $(DRY_RUN),echo "$@: no dry run — this recipe drives sub-m
 # already built lives; none of them is something this build produces.
 # ---------------------------------------------------------------------------
 
-# The configured Circle worlds and circle-libsdl2's per-board archive. Driven
-# from the parent repository both point at its circle-libsdl2 checkout; on
-# their own they mean this directory, which is where a consumer that carries
-# its own world would put one.
-CIRCLE_WORLDS ?= $(CURDIR)
-SHIM          ?= $(CURDIR)
+# The configured Circle worlds and circle-libsdl2's per-board archive. A
+# parent repository that carries its own editing copy of circle-libsdl2
+# overrides both to point at it; on their own they mean this library's own
+# submodule, which is what makes a standalone clone buildable.
+CIRCLE_WORLDS ?= $(CURDIR)/circle-libsdl2
+SHIM          ?= $(CURDIR)/circle-libsdl2
 
 CIRCLESTDLIBHOME = $(CIRCLE_WORLDS)/circle-stdlib-$(BOARD)
 

@@ -26,11 +26,6 @@ pascal-undefined.txt
 # The throwaway target name Circle's Rules.mk attaches its own link rule to.
 .circle-unused.*
 
-# The Free Pascal source this library builds against, reached as a symlink to
-# the editing copy in the parent repository. The name is held for the submodule
-# that takes its place, so the link is never committed here.
-/fpc
-
 # THE CIRCLE WORLDS ARE NOT SOURCE. Each is gigabytes of configured, built
 # framework plus newlib and libc++, produced by circle-libsdl2's `make deps`
 # and reproducible from its pins. Where they come from is docs/BUILDING.md.
