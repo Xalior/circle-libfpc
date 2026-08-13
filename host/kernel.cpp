@@ -179,14 +179,29 @@ TShutdownMode CKernel::Run(void)
     // A relative path a program opens is nothing at all here unless the
     // filesystem's own current directory says what it is relative to. One
     // setting for the whole board, shared by every core. A chdir that fails
-    // leaves that setting where it was, so the program still has a working
-    // directory -- the default root, if it never asked to move -- and a
-    // program whose files are not there fails on its own first read, with
-    // its own error, rather than never starting at all.
+    // leaves that setting where it was -- the card's root -- so a program
+    // that goes on to write a relative path writes it there instead of
+    // where it meant to, which can overwrite anything on the card. Refused
+    // rather than risked.
     if (SDL2Circle_IOChdir(WorkDir) != 0)
-        m_Logger.Write(From, LogWarning,
-                       "working directory %s is not on the card; carrying "
-                       "on with the current directory unchanged", WorkDir);
+    {
+        // Said once, then again for as long as the board is powered, so a
+        // console attached after boot still learns why. This runs on core
+        // 0 before the split is armed, so it yields to the scheduler
+        // between repeats instead of stopping it, keeping the console
+        // alive to say it again.
+        for (;;)
+        {
+            m_Logger.Write(From, LogError,
+                           "working directory %s not found on the card; "
+                           "the program cannot start", WorkDir);
+
+            const u64 nUntil = CTimer::GetClockTicks64()
+                               + (u64) 5 * CLOCKHZ;
+            while (CTimer::GetClockTicks64() < nUntil)
+                m_Scheduler.Yield();
+        }
+    }
 
     char CwdNow[256];
     if (SDL2Circle_IOGetCwd(CwdNow, sizeof CwdNow) == 0)
