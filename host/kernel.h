@@ -4,20 +4,19 @@
 //
 //   core 0   the devices. The card, the USB bus, the serial console, and the
 //            firmware mailbox. Everything the guest cannot touch.
-//   core 1   the game. This is the whole of the computer the Pascal program
-//            can see, and it owns no device.
+//   core 1   the application. This is the whole of the computer the Pascal
+//            program can see, and it owns no device.
 //   core 2   the presentation core. A finished frame goes in on core 1 and a
 //            scanout comes out here, scaled onto whatever panel is attached.
 //
-// This kernel makes two declarations on the game's behalf, both before
-// SDL_Init and both things a desktop SDL would otherwise work out for
-// itself:
+// This kernel makes two declarations before SDL_Init, both things a desktop
+// SDL would otherwise work out for itself:
 //
-//   the base path         where the game's files were put on the card.
-//   the working directory the same answer again, for the relative paths the
-//                         game uses for its sprites and backgrounds. The
-//                         filesystem's own current directory lives on core 0
-//                         and is shared by every core.
+//   the base path         where the program's own files are on the card.
+//   the working directory the same answer again, for a program whose own
+//                         paths are relative. The filesystem's own current
+//                         directory lives on core 0 and is shared by every
+//                         core.
 //
 // The virtual display is not one of them; see kernel.cpp.
 //
@@ -71,7 +70,7 @@ private:
     // The only console device this kernel owns. The screen is a second
     // destination for the same log and it belongs to circle-libsdl2 - there is
     // no screen object here to hold, and the library drops it the moment the
-    // game initialises SDL video.
+    // program initialises SDL video.
     CSerialDevice       m_Serial;
     CExceptionHandler   m_ExceptionHandler;
     CInterruptSystem    m_Interrupt;
@@ -80,15 +79,15 @@ private:
     // Core 0 yields on this for as long as the board runs. The library's servo
     // is a scheduler task, and the servo is what drains the other cores' log
     // rings, what pumps USB so the keyboard and the gamepad produce events,
-    // what performs every file call the game makes, and what feeds the
+    // what performs every file call the program makes, and what feeds the
     // presentation core. A host that stopped yielding would stop all four.
     CScheduler          m_Scheduler;
     // No CCPUThrottle is declared here: the CPU clock and the case fan
     // belong to circle-libsdl2, which constructs that object itself, and
     // Circle halts in the constructor of a second one in the same system.
     // The card and everything on top of it, all of it core 0's and all of
-    // it up before the application core is released, since the game's first
-    // act is to read a settings file.
+    // it up before the application core is released, since a program may
+    // open a file as its first act.
     CEMMCDevice         m_EMMC;
     FATFS               m_FileSystem;
     // The C library's standard descriptors. Nothing writes to it: it exists so

@@ -14,7 +14,7 @@
 #     include $(LIBFPC_HOME)/host/host-kernel.mk
 #     OBJS = $(HOST_KERNEL_OBJS)
 #
-#     FPC_APP = mygame.pas
+#     FPC_APP = myprogram.pas
 #     include $(LIBFPC_HOME)/fpc-app.mk
 #     OBJS += $(FPC_APP_OBJS)
 #     LIBS := $(FPC_APP_LIBS) $(SHIM)/libSDL2-$(BOARD).a $(CIRCLE_STDLIB_LIBS)
@@ -23,17 +23,16 @@
 #
 # WHAT THIS KERNEL DOES: brings up core 0's own devices (the serial console,
 # the SD card and its FAT filesystem, the C library's standard descriptors),
-# starts the secondary cores, declares the card's game directory as both the
-# working directory and the SDL base path, arms the core split, releases the
-# application core to call the Pascal program's entry point, and serves it --
-# draining its log, pumping USB, performing its file calls, feeding the
-# presentation core -- until it returns, at which point Circle reboots the
-# board. Read host/kernel.h for the full shape and host/kernel.cpp for why
-# each step is where it is.
+# starts the secondary cores, declares the working directory and the SDL base
+# path, arms the core split, releases the application core to call the Pascal
+# program's entry point, and serves it -- draining its log, pumping USB,
+# performing its file calls, feeding the presentation core -- until it
+# returns, at which point Circle reboots the board. Read host/kernel.h for the
+# full shape and host/kernel.cpp for why each step is where it is.
 #
 # THE VIRTUAL DISPLAY IS NOT DECLARED HERE. circle-libsdl2 reads it out of the
 # image's own boot argument block. A port states the size once, in its own
-# Makefile, beside the RAPI_GAME_DIR porter value below.
+# Makefile, beside the RAPI_WORK_DIR porter value below.
 #
 # WHAT COMES OUT
 #
@@ -54,13 +53,12 @@
 #
 # WHAT IT TAKES IF IT IS GIVEN
 #
-#   RAPI_GAME_DIR     where the Pascal program's files are on the card -- the
-#                     working directory this kernel sets, and the base path it
-#                     declares to SDL. A build parameter because the card
-#                     layout is the consumer's decision, never this kernel's:
-#                     a port whose card is laid out differently sets it rather
-#                     than editing kernel.cpp. Left unset, the kernel falls
-#                     back to its own compiled-in default (see kernel.cpp).
+#   RAPI_WORK_DIR     the working directory this kernel sets, and the base
+#                     path it declares to SDL. A build parameter because the
+#                     card layout is the consumer's decision, never this
+#                     kernel's: a port whose card is laid out differently
+#                     sets it rather than editing kernel.cpp. Left unset, the
+#                     kernel falls back to the card's root (see kernel.cpp).
 #
 
 ifeq ($(strip $(LIBFPC_HOME)),)
@@ -84,8 +82,8 @@ HOST_KERNEL_DEPS = $(HOST_KERNEL_OBJS:.o=.d)
 INCLUDE := -I $(LIBFPC_HOME)/include -I $(SHIM)/include \
 	   $(CIRCLE_STDLIB_INCLUDES) $(INCLUDE)
 
-ifneq ($(strip $(RAPI_GAME_DIR)),)
-DEFINE += -DRAPI_GAME_DIR='"$(RAPI_GAME_DIR)"'
+ifneq ($(strip $(RAPI_WORK_DIR)),)
+DEFINE += -DRAPI_WORK_DIR='"$(RAPI_WORK_DIR)"'
 endif
 
 # Per-board compile into $(OBJDIR), reading this kernel's own sources rather

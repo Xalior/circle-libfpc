@@ -3,24 +3,23 @@
 // Raspberry Pi.
 //
 // Initialize() brings up core 0's own devices and mounts the card before any
-// other core runs, since the game's first act is to read a settings file.
-// Run() then declares the game's card directory as both the working
-// directory and the SDL base path, arms the core split, releases the
-// application core to call the Pascal program's entry point, and services it
-// until it returns.
+// other core runs, since a program may open a file as its first act. Run()
+// then declares the working directory and the SDL base path, arms the core
+// split, releases the application core to call the Pascal program's entry
+// point, and services it until it returns.
 //
-// This kernel declares no display. The size the game needs is a build-time
+// This kernel declares no display. The size a program needs is a build-time
 // fact of the port, stated once in the port's own Makefile and stamped into
 // the built image's boot argument block, which circle-libsdl2 reads before
-// the game ever calls SDL_CreateWindow.
+// the program ever calls SDL_CreateWindow.
 //
 // SDL2Circle_IOChdir sets the filesystem's own current directory, which
-// lives on core 0 and is shared by every core, so the game's own relative
-// paths work with no change to the game.
+// lives on core 0 and is shared by every core, so a program's own relative
+// paths work with no change to the program.
 //
 // SDL_GetBasePath and SDL_GetPrefPath are the same question asked through
-// SDL rather than through the runtime, for the game's settings file and its
-// high-score tables. SDL2Circle_DeclareBasePath answers it.
+// SDL rather than through the runtime, for a program's own settings and
+// saved state. SDL2Circle_DeclareBasePath answers it.
 //
 #include "kernel.h"
 #include <libfpc.h>
@@ -31,23 +30,23 @@
 static const char From[] = "kernel";
 
 // ---------------------------------------------------------------------------
-// The decisions this kernel makes for the game.
+// The decisions this kernel makes on the program's behalf.
 // ---------------------------------------------------------------------------
 
-// Where the game's directory is on the card, one directory of the game's own
-// since the card is shared with everything else this project boots.
+// Where the program's working directory is on the card. The default is the
+// card's root, which is always there, so a program that sets nothing still
+// gets a real directory it can read and write.
 //
 // A build parameter rather than a constant: the card layout is the
 // consumer's decision, so a consumer whose card is laid out differently sets
-// RAPI_GAME_DIR rather than editing this file. The default follows this
-// family's convention of one directory per game under /games.
+// RAPI_WORK_DIR rather than editing this file.
 //
-// Both the working directory and the SDL base path the game reads its
-// settings and writes its high scores under derive from this one value.
-#ifndef RAPI_GAME_DIR
-#define RAPI_GAME_DIR "/games/fairtris2"
+// Both the working directory and the SDL base path derive from this one
+// value.
+#ifndef RAPI_WORK_DIR
+#define RAPI_WORK_DIR "/"
 #endif
-static const char GameDir[] = RAPI_GAME_DIR;
+static const char WorkDir[] = RAPI_WORK_DIR;
 
 // ---------------------------------------------------------------------------
 // The gate between core 0 and the application core.
@@ -55,8 +54,7 @@ static const char GameDir[] = RAPI_GAME_DIR;
 
 static std::atomic<int> s_AppGate{0};
 
-// Set by the application core when the Pascal program has ended. A game does
-// not normally end, so this only fires when the player quits.
+// Set by the application core when the Pascal program has ended.
 static std::atomic<int> s_AppDone{0};
 
 static inline void PublishToOtherCores(void)
@@ -138,7 +136,7 @@ boolean CKernel::Initialize(void)
     if (bOK) bOK = m_Logger.Initialize(&m_Serial);
     // The serial destination above is not replaced. SDL2Circle_LogAttachScreen
     // adds the screen as a second destination, which the library drops by
-    // itself once the game initialises SDL video and takes the display. So
+    // itself once the program initialises SDL video and takes the display. So
     // the boot lines appear on both and everything after appears on serial
     // alone.
     if (bOK && SDL2Circle_LogAttachScreen() != 0)
@@ -163,8 +161,8 @@ boolean CKernel::Initialize(void)
     }
     if (bOK) bOK = m_StdioConsole.Initialize();
     // Takes descriptors 0, 1 and 2 before the first file is opened. Without
-    // this, the C library would hand the game's first open() the lowest free
-    // slot, descriptor 0, which the Pascal runtime reads as the console.
+    // this, the C library would hand the program's first open() the lowest
+    // free slot, descriptor 0, which the Pascal runtime reads as the console.
     if (bOK) CGlueStdioInit(m_StdioConsole);
 
     if (bOK) SDL2Circle_ArmCoreRuntime();
@@ -178,27 +176,27 @@ boolean CKernel::Initialize(void)
 
 TShutdownMode CKernel::Run(void)
 {
-    // The game's own files are named with no prefix, which is a working
-    // directory on every desktop and nothing at all here. One setting for
-    // the whole board, shared by every core.
-    if (SDL2Circle_IOChdir(GameDir) != 0)
-    {
-        m_Logger.Write(From, LogError,
-                       "the game directory %s is not on the card. Every "
-                       "file the game loads is named relative to it, so it "
-                       "cannot start.", GameDir);
-        return ShutdownHalt;
-    }
+    // A relative path a program opens is nothing at all here unless the
+    // filesystem's own current directory says what it is relative to. One
+    // setting for the whole board, shared by every core. A chdir that fails
+    // leaves that setting where it was, so the program still has a working
+    // directory -- the default root, if it never asked to move -- and a
+    // program whose files are not there fails on its own first read, with
+    // its own error, rather than never starting at all.
+    if (SDL2Circle_IOChdir(WorkDir) != 0)
+        m_Logger.Write(From, LogWarning,
+                       "working directory %s is not on the card; carrying "
+                       "on with the current directory unchanged", WorkDir);
 
     char CwdNow[256];
     if (SDL2Circle_IOGetCwd(CwdNow, sizeof CwdNow) == 0)
         m_Logger.Write(From, LogNotice, "working directory: %s", CwdNow);
 
     // The same answer as above, asked through SDL instead of through the
-    // runtime: the game reads its settings and writes its high scores under
+    // runtime: a program reads its settings and writes its saved state under
     // SDL_GetPrefPath, which the library composes below this and creates as
     // it goes.
-    if (SDL2Circle_DeclareBasePath(GameDir) != 0)
+    if (SDL2Circle_DeclareBasePath(WorkDir) != 0)
     {
         m_Logger.Write(From, LogError, "base path: %s", SDL_GetError());
         return ShutdownHalt;

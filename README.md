@@ -61,7 +61,7 @@ does the link. The target refuses to produce an executable, deliberately, and
 `host/` holds a second kernel, `host/kernel.cpp` and `host/kernel.h`, separate
 from the examples' own. `host/host-kernel.mk` is the Makefile fragment that
 supplies it, included the same way as `fpc-app.mk`; read its header for what a
-port's Makefile sets and includes. It takes `RAPI_GAME_DIR`, the game
+port's Makefile sets and includes. It takes `RAPI_WORK_DIR`, the working
 directory on the card, and turns it into the kernel's own build-time define.
 It does not read `RAPI_VDISPLAY`: a port stamps that into the built image
 separately, through `circle-libsdl2`'s `tools/stamp-bootargs`.
