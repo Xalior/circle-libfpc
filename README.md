@@ -58,6 +58,16 @@ Free Pascal compiles the program to relocatable objects; Circle's own build
 does the link. The target refuses to produce an executable, deliberately, and
 `fpc-compile.sh` explains what that means for reading the compiler's result.
 
+Each example above writes its own `kernel.cpp`, because each proves one
+capability and the milestones are meant to be read in order. **A real port
+does not write one.** `host/host-kernel.mk` is a ready-made kernel — the SD
+card brought up, the game directory declared as both the working directory
+and the SDL base path, the core split armed, the Pascal entry point called and
+served until it returns — included the same way `fpc-app.mk` is; read its
+header for the whole contract. A port's own Makefile then carries no C++ at
+all. `fairtris2` in the parent repository is the example of a consumer built
+this way.
+
 ## Console output
 
 `writeln` works, and it reaches the console the only way anything on the
