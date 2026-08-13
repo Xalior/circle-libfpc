@@ -58,15 +58,16 @@ Free Pascal compiles the program to relocatable objects; Circle's own build
 does the link. The target refuses to produce an executable, deliberately, and
 `fpc-compile.sh` explains what that means for reading the compiler's result.
 
-Each example above writes its own `kernel.cpp`, because each proves one
-capability and the milestones are meant to be read in order. **A real port
-does not write one.** `host/host-kernel.mk` is a ready-made kernel — the SD
-card brought up, the game directory declared as both the working directory
-and the SDL base path, the core split armed, the Pascal entry point called and
-served until it returns — included the same way `fpc-app.mk` is; read its
-header for the whole contract. A port's own Makefile then carries no C++ at
-all. `fairtris2` in the parent repository is the example of a consumer built
-this way.
+`host/` holds a second kernel, `host/kernel.cpp` and `host/kernel.h`, separate
+from the examples' own. `host/host-kernel.mk` is the Makefile fragment that
+supplies it, included the same way as `fpc-app.mk`; read its header for what a
+port's Makefile sets and includes. It takes `RAPI_GAME_DIR`, the game
+directory on the card, and turns it into the kernel's own build-time define.
+It does not read `RAPI_VDISPLAY`: a port stamps that into the built image
+separately, through `circle-libsdl2`'s `tools/stamp-bootargs`.
+
+`examples/m0` through `m8` do not use this kernel; each writes its own.
+`fairtris2` in the parent repository is a consumer of this one.
 
 ## Console output
 
