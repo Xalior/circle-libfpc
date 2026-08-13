@@ -120,14 +120,10 @@ CKernel::CKernel(void)
     : m_Serial(0, FALSE, 0),
       m_Timer(&m_Interrupt),
       m_Logger(m_Options.GetLogLevel(), &m_Timer),
-      m_EMMC(&m_Interrupt, &m_Timer, &m_ActLED),
-      m_StdioConsole(&m_Serial, &m_Serial)
+      m_EMMC(&m_Interrupt, &m_Timer, &m_ActLED)
 {
     m_ActLED.Blink(3);
 }
-
-// The C library's own stdio, initialised on the descriptors above.
-void CGlueStdioInit(CConsole &rConsole);
 
 boolean CKernel::Initialize(void)
 {
@@ -159,12 +155,9 @@ boolean CKernel::Initialize(void)
         if (!bOK)
             m_Logger.Write(From, LogError, "the card did not mount");
     }
-    if (bOK) bOK = m_StdioConsole.Initialize();
-    // Takes descriptors 0, 1 and 2 before the first file is opened. Without
-    // this, the C library would hand the program's first open() the lowest
-    // free slot, descriptor 0, which the Pascal runtime reads as the console.
-    if (bOK) CGlueStdioInit(m_StdioConsole);
-
+    // Descriptors 0, 1 and 2 are circle-libsdl2's to take, inside
+    // SDL2Circle_ArmCoreRuntime below — before the application core is
+    // released, so a program's first file open still finds them taken.
     if (bOK) SDL2Circle_ArmCoreRuntime();
     // Started last: the world the secondary cores work in has to be complete
     // before they run, and they park until Run() arms the split.

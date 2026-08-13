@@ -10,9 +10,10 @@
   is ever called -- through nothing but Pascal's own Read.
 
   It prints one line at start, then loops: each character it manages to
-  read from Input is echoed back with its ordinal value, and a heartbeat
-  line marks the passage of a few seconds so a run that is receiving
-  nothing can be told apart from one that has stopped.
+  read from Input is echoed back with its ordinal value. Read blocks, like
+  any other target's console read, so the loop otherwise sits inside it --
+  a run with nothing typed is silent rather than spinning, and the
+  heartbeat below is what a serial console still sees while it waits.
 }
 program keyprobe;
 
@@ -20,10 +21,9 @@ program keyprobe;
 {$H+}
 
 const
-  { How often the heartbeat is due, and how long the loop rests between
-    read attempts. Read does not block on this target -- see the report
-    this program's build produced -- so the rest is what keeps the loop
-    from spinning the core flat out on a channel that is not coming. }
+  { How often the heartbeat is due. Read blocks until a key arrives, so the
+    heartbeat is only checked between read returns -- it marks time passing
+    across keypresses, not while none has come. }
   HeartbeatMicros = 3000000;
   RestMicros      = 100000;
 
