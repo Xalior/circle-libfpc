@@ -3,10 +3,25 @@
 ## Prerequisites
 
 ```sh
-gmake                 # this board's archive, every example and milestone image
-gmake BOARD=rpi5      # build against another board's world
-gmake rebuild         # build from nothing
+gmake                  # show the targets (the default goal)
+gmake all              # this board's archive, every example and milestone image
+gmake lib              # just the archive, for BOARD
+gmake all-boards       # the archive, for every board this library supports
+gmake examples         # every example under examples/, freshly linked
+gmake milestones       # every milestone under milestones/, freshly linked
+gmake BOARD=rpi5       # build against another board's world
+gmake rebuild          # build from nothing
 ```
+
+`examples` and `milestones` are read off the directories on disk, not kept by
+hand: a directory counts only if it carries a Makefile of its own, so a new
+example or milestone is picked up the moment it gains one, and a leftover
+build-only directory with no Makefile is not mistaken for a program to
+build. Both targets delete the archive and rebuild it before the sweep
+starts, and delete each program's own image before that program is built,
+so a stale archive or a leftover image can never stand in for a rebuild
+that did not happen. Both keep going past a program that fails to build,
+and report at the end which ones built and which did not.
 
 The build needs three things it never produces: a configured Circle world, the
 `circle-libsdl2` archive for the same board, and the Free Pascal
