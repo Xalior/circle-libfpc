@@ -1,18 +1,19 @@
 //
-// heap.cpp — what the Free Pascal memory manager needs from Circle that
+// heap.cpp - what the Free Pascal memory manager needs from Circle that
 // Circle does not already declare as C.
 //
-// THE ALLOCATOR IS CIRCLE'S, AND IT IS NOT A CROSSING. Every other device on
-// the board belongs to the core that owns it, and the application core reaches
-// one only through circle-libsdl2. Memory is different: CHeapAllocator guards
-// itself with a spin lock that holds across cores, so an allocation made on
-// the application core is safe as it stands. That is why the Pascal side calls
-// malloc directly instead of marshalling the way the file layer must.
+// The allocator is Circle's, and it is not a crossing. Every other device
+// on the board belongs to the core that owns it, and the application core
+// reaches one only through circle-libsdl2. Memory is different:
+// CHeapAllocator guards itself with a spin lock that holds across cores,
+// so an allocation made on the application core is safe as it stands. The
+// Pascal side calls malloc directly instead of marshalling the way the
+// file layer must.
 //
-// SO THERE IS ALMOST NOTHING HERE. malloc, calloc, realloc and free are
-// already declared as C, by circle/alloc.h, and in a linked kernel they are
-// Circle's own — libcircle.a(alloc.o) defines them and newlib's are never
-// pulled in. The Pascal runtime declares those four by name and calls them.
+// malloc, calloc, realloc and free are already declared as C, by
+// circle/alloc.h, and in a linked kernel they are Circle's own:
+// libcircle.a(alloc.o) defines them and newlib's are never pulled in. The
+// Pascal runtime declares those four by name and calls them directly.
 //
 // The two routines below are the rest: the questions Free Pascal's memory
 // manager has to answer that C has no call for. Both are behind C++.
@@ -24,7 +25,7 @@
 #include <circle/sysconfig.h>
 #include <circle/types.h>
 
-// THE SIZE OF AN ALLOCATED BLOCK.
+// The size of an allocated block.
 //
 // Circle rounds every allocation up to one of its bucket sizes and writes the
 // result into a THeapBlockHeader that sits immediately before the block it
@@ -54,22 +55,22 @@ extern "C" size_t LibFPC_HeapBlockSize(const void *pBlock)
     return pHeader->nSize;
 }
 
-// WHAT IS LEFT OF THE HEAP'S TAIL.
+// What is left of the heap's tail.
 //
-// The heap Circle serves malloc from is named by HEAP_DEFAULT_MALLOC, the same
-// constant malloc itself uses, so this follows the world's configuration
-// rather than restating it.
+// The heap Circle serves malloc from is named by HEAP_DEFAULT_MALLOC, the
+// same constant malloc itself uses, so this follows the world's
+// configuration rather than restating it.
 //
-// GetFreeSpace() reports the part of that region no block has ever been carved
-// out of. Blocks on a free list are not counted, which is the property that
-// makes the number useful: repeatedly allocating and freeing a size that is
-// already on a free list does not move it at all.
+// GetFreeSpace() reports the part of that region no block has ever been
+// carved out of. Blocks on a free list are not counted, which is the
+// property that makes the number useful: repeatedly allocating and
+// freeing a size that is already on a free list does not move it at all.
 //
-// THIS IS THE WHOLE BOARD'S NUMBER. There is one heap and every core allocates
-// from it, so the core that owns the devices moves this while a Pascal program
-// runs, and the longer the program runs the further it moves. It measures
-// whether memory is being reused. It does NOT measure whether the Pascal
-// program is leaking, and the memory manager's own count is what does.
+// This is the whole board's number: there is one heap and every core
+// allocates from it, so the core that owns the devices moves this while a
+// Pascal program runs. It measures whether memory is being reused, not
+// whether the Pascal program is leaking; the memory manager's own count is
+// what does.
 extern "C" size_t LibFPC_HeapFreeSpace(void)
 {
     return CMemorySystem::Get()->GetHeapFreeSpace(HEAP_DEFAULT_MALLOC);

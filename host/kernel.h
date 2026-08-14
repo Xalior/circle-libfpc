@@ -90,7 +90,7 @@ private:
     CEMMCDevice         m_EMMC;
     FATFS               m_FileSystem;
     // No console is declared here. circle-libsdl2 binds descriptors 0, 1 and
-    // 2 itself, to its own console, from SDL2Circle_ArmCoreRuntime — before
+    // 2 itself, to its own console, from SDL2Circle_ArmCoreRuntime - before
     // this kernel releases the application core, so a program's first file
     // open still finds them taken.
     CSplitCores         m_Cores;

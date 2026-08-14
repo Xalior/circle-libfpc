@@ -156,7 +156,7 @@ boolean CKernel::Initialize(void)
             m_Logger.Write(From, LogError, "the card did not mount");
     }
     // Descriptors 0, 1 and 2 are circle-libsdl2's to take, inside
-    // SDL2Circle_ArmCoreRuntime below — before the application core is
+    // SDL2Circle_ArmCoreRuntime below - before the application core is
     // released, so a program's first file open still finds them taken.
     if (bOK) SDL2Circle_ArmCoreRuntime();
     // Started last: the world the secondary cores work in has to be complete

@@ -82,7 +82,7 @@ program, touches that device.
 Standard output and standard error arrive under separate tags, `pascal` and
 `pascal-err`, so the console tells them apart. The standard handles answer
 yes to Free Pascal's "is this a device" question, so a text file on one is
-emptied at the end of every `writeln` rather than when its buffer fills — a
+emptied at the end of every `writeln` rather than when its buffer fills - a
 program that never ends still prints as it goes.
 
 The log channel cannot refuse a line, and it never blocks the core that
@@ -110,8 +110,8 @@ program gets the C library's semantics, and the error translation in
 
 **The file position lives on this side.** The service names an offset on every
 read and write and remembers nothing between calls, while Free Pascal expects
-an open file to know where it is. So the target holds one entry per open file —
-where it is, and how long it is — advanced on each read and write, set on each
+an open file to know where it is. So the target holds one entry per open file -
+where it is, and how long it is - advanced on each read and write, set on each
 seek, and taken from the open so that a seek from the end has an answer. There
 is no lock on that table and none is needed: Pascal threads run on one core,
 nothing preempts them, and no routine in the file layer gives the core away.
@@ -121,31 +121,29 @@ program asks to see that closing a file gave its entry back.
 **A truncate puts the descriptor where the cut needs it first, and that is not
 tidiness.** The truncate underneath the file service remembers where the
 descriptor was, seeks to the new length, cuts the file, and seeks back to where
-it was — and on this filesystem a seek past the end of a file that is open for
+it was - and on this filesystem a seek past the end of a file that is open for
 writing extends the file to that offset rather than stopping at the end. The
 service seeks before every transfer and leaves the descriptor where the
 transfer ended, so a program that reads near the end of a file and then cuts it
 short would have the file re-grown to exactly its old length, with success
 reported and the card unchanged. The layer therefore writes no bytes at the new
-length before asking for the cut — the service has no seek of its own, so a
+length before asking for the cut - the service has no seek of its own, so a
 transfer is the only lever on the descriptor, and a write cannot be refused by a
-handle that is open for writing. This is a defect in the layers below and it is
-theirs to fix; both calls here are the service's own, in the order this board
-needs them.
+handle that is open for writing. Both calls here are the service's own, in the
+order this board needs them.
 
 **`Erase` refuses a directory.** Unlink on this board is the card's own, which
 removes an empty directory as readily as a file, and a Pascal program that
 writes `Erase` means a file. So the layer asks about the name first and reports
-"file not found" for a directory rather than removing it. That is the guard
-Free Pascal's unix target makes, for the same reason and with the same number.
-`RmDir` is how a directory goes.
+"file not found" for a directory rather than removing it. `RmDir` is how a
+directory goes.
 
 **The working directory is one setting for the whole board.** It belongs to the
 filesystem, which lives on the core that owns the card, so it is not per Pascal
 thread and not per core: `ChDir` from any thread moves every thread, and the
 host kernel's own file calls stand in the same directory afterwards. That is
-the reach a working directory has in a Pascal program anywhere — it belongs to
-the process rather than to a thread — with the host kernel inside the same
+the reach a working directory has in a Pascal program anywhere - it belongs to
+the process rather than to a thread - with the host kernel inside the same
 process here.
 
 Nothing inside the guest can come between a change and the name that depends on
@@ -157,7 +155,7 @@ names. A program that will not rely on either agreement gives absolute names,
 which the setting does not affect.
 
 **A host kernel has to bring the card up itself**, on core 0, before it
-releases the application core — the EMMC device, the FAT mount, and the C
+releases the application core - the EMMC device, the FAT mount, and the C
 library's standard descriptors. Read `examples/m5/kernel.cpp` for the order and
 why it is that order. The descriptors matter as much as the mount: the C
 library hands out the lowest free one, and the Free Pascal runtime reads 0, 1
@@ -179,12 +177,12 @@ declared in terms of them.
 
 **Both file layers share one position table**, and that is the whole of what
 the target had to add. The file service names an offset on every read and
-write, so an open file's position lives on the Pascal side — and Pascal's own
+write, so an open file's position lives on the Pascal side - and Pascal's own
 `Reset` and `SysUtils`' `FileOpen` hand out the same descriptors. A second
 table would give one descriptor two positions and make the right answer depend
 on which layer touched it last. So the System unit exports the six operations
-`SysUtils` needs — `CircleFileOpen`, `CircleFileClose`, `CircleFileRead`,
-`CircleFileWrite`, `CircleFileSeek` and `CircleFileTruncate` — and there is one
+`SysUtils` needs - `CircleFileOpen`, `CircleFileClose`, `CircleFileRead`,
+`CircleFileWrite`, `CircleFileSeek` and `CircleFileTruncate` - and there is one
 table underneath all of it. `CircleOpenSearchCount` is `CircleOpenFileCount`'s
 counterpart for directory searches.
 
@@ -196,7 +194,7 @@ because the card's filesystem does not tell two names apart by case alone.
 
 **A directory entry on this card carries only its name.** The service reports
 no type, size or timestamp with it, so the search asks about each name
-separately — which is what Free Pascal's other directory-reading targets do,
+separately - which is what Free Pascal's other directory-reading targets do,
 for the same reason.
 
 ### What this board cannot answer, and how each one says so
@@ -224,9 +222,9 @@ says why in its own comment.
   is the question for a directory.
 
 `GetLastOSError` answers from what the file service last reported. This machine
-has no errno the guest may read — the C library's is one variable shared by
+has no errno the guest may read - the C library's is one variable shared by
 every core, which is why the service returns a negated error number instead of
-setting one — so each routine catches the number as it sees it, per Pascal
+setting one - so each routine catches the number as it sees it, per Pascal
 thread.
 
 `TThread` is this library's scheduler with an object on top: `BeginThread`,
@@ -256,7 +254,7 @@ the machine-independent part of `rtl-extra` (`objects`, `matrix`, `ucomplex`,
 Which packages build for a target is each package's own `fpmake.pp` to say,
 and that is where this target is named. A package not named there is not built,
 and a program that reaches for one of its units is told the unit cannot be
-found — at compile time, on the development host, which is where a missing unit
+found - at compile time, on the development host, which is where a missing unit
 should be found.
 
 **What is not built is not built for a reason.** `rtl-console` has no `crt`,
@@ -264,22 +262,22 @@ should be found.
 SDL here in any case; `fcl-process` needs processes and this machine runs one
 program; `fcl-net` needs sockets; `fcl-registry` needs a registry; `fcl-res`
 reads and writes the resource containers of executable formats, which this
-target does not produce. Every binding to a shared library — `zlib`, `libpng`,
-`sqlite`, `openssl`, `x11`, `gtk2` and the rest of that class — needs a library
+target does not produce. Every binding to a shared library - `zlib`, `libpng`,
+`sqlite`, `openssl`, `x11`, `gtk2` and the rest of that class - needs a library
 this world does not carry and cannot load one at run time. The host tools
 (`fppkg`, `fpmkunit`, `ide`, `fv`, `pastojs`, `webidl`, `fcl-passrc`) run on a
 development machine rather than on a board.
 
 **The runtime library gained units of its own** to carry those packages:
 `math`, `fgl`, `charset`, `cpall` with the code page tables, `character`,
-`unicodedata`, `unicodenumtable`, `fpwidestring` — and `Dos`.
+`unicodedata`, `unicodenumtable`, `fpwidestring` - and `Dos`.
 
 ### A program chooses its own wide string manager
 
 **`uses fpwidestring` if the program cases a `UnicodeString`.** `UpperCase`
 and `LowerCase` never needed it and never will: their `UnicodeString` forms are
 `InternalChangeCase(S,['a'..'z'],±32)` in
-`rtl/objpas/sysutils/sysuni.inc` — ASCII by definition, on every Free Pascal
+`rtl/objpas/sysutils/sysuni.inc` - ASCII by definition, on every Free Pascal
 target, and an accented letter comes back unchanged because that is what the
 routine is for. `UnicodeUpperCase` and `UnicodeLowerCase` are the ones that
 ask, through `widestringmanager.UpperUnicodeStringProc`.
@@ -293,7 +291,7 @@ Recompile the application with a unit that installs a unicodestring manager in t
 ```
 
 to standard error and halts with runtime error 234. **So the failure is loud
-and names its own cure** — nothing here silently returns the text it was
+and names its own cure** - nothing here silently returns the text it was
 given.
 
 A target with an operating system behind it elects a manager from the system.
@@ -305,7 +303,7 @@ reason.
 
 It is not installed for every program on purpose. It pulls `unicodedata`'s
 tables into the image, and a program that never touches a `UnicodeString`
-should not carry them — and because the failure is a halt with a message
+should not carry them - and because the failure is a halt with a message
 rather than a wrong answer, a program that needs it finds out.
 
 ### The Dos unit
@@ -316,9 +314,9 @@ packages need it: `paszlib`'s `gzio` and the `unzip` package both call
 
 It is written over `SysUtils` rather than over the file service. Every routine
 it offers already exists there, reaching the card through `circle-libsdl2` and
-nothing else, so `Dos` here is a translation of Turbo Pascal's conventions — a
+nothing else, so `Dos` here is a translation of Turbo Pascal's conventions - a
 byte of attribute bits, a packed timestamp, `DosError` instead of an exception
-— onto calls that were already made. It adds no crossing of its own.
+- onto calls that were already made. It adds no crossing of its own.
 
 Its `SearchRec` carries the `SysUtils` search that drives it, which is why the
 record's layout is this target's own; every target declares its own for the
@@ -335,7 +333,7 @@ nothing because there is no environment.
 ## Elapsed time
 
 **Time splits in two here, and the two halves are answered in different
-places.** Elapsed time — how long something took, and how long to wait — is
+places.** Elapsed time - how long something took, and how long to wait - is
 the Arm generic timer's free-running counter, read directly. On this build
 that counter is a processor system register, one per core, so the application
 core reads it with an instruction: no device, no lock, no other core, and
@@ -346,22 +344,22 @@ the C library's `_gettimeofday` and nothing else.
 
 The System unit carries four routines for the first half.
 
-- `CircleCounterFrequency` — how many ticks the counter counts in a second, as
+- `CircleCounterFrequency` - how many ticks the counter counts in a second, as
   the firmware recorded it at boot. It is also the resolution: one tick is one
   part in this many of a second. Zero is a real answer and means the firmware
   left the register unset.
-- `CircleCounter` — the counter itself, in its own ticks. It starts at zero
+- `CircleCounter` - the counter itself, in its own ticks. It starts at zero
   when the board comes up and only goes forwards, and there are at least 56
   bits behind it, which at this rate is decades from wrapping.
-- `CircleElapsedMicroseconds` — the same thing in microseconds.
-- `CircleWaitMicroseconds` — wait for a stated length of time. The deadline is
+- `CircleElapsedMicroseconds` - the same thing in microseconds.
+- `CircleWaitMicroseconds` - wait for a stated length of time. The deadline is
   worked out once in ticks and the counter is read until it arrives; ticks are
   rounded up, so the wait is never short.
 
 The counter reads themselves are three instructions in `src/counter.cpp`, and
 all the arithmetic is on the Pascal side. A read is bracketed by an
 instruction barrier, without which a timestamp can be taken before the work it
-is meant to bracket has finished — so a read costs more than an unsynchronised
+is meant to bracket has finished - so a read costs more than an unsynchronised
 one would, and that cost sits inside every interval measured with it.
 
 **A wait gives the core away.** The waiting loop's one non-arithmetic
@@ -384,7 +382,7 @@ core is still one line of execution.
 
 The guest is a computer with one core, and a computer with one core has always
 run threads. So `TThreadManager` is filled in here rather than delegated
-anywhere — thread lifecycle, critical sections, thread variables, and both
+anywhere - thread lifecycle, critical sections, thread variables, and both
 event families. `BeginThread`, `ThreadSwitch`, `EnterCriticalSection`,
 `RTLEventWaitFor` and the rest are reached the way a program reaches them on
 any other target.
@@ -406,7 +404,7 @@ Three things in Free Pascal's own runtime do most of the work.
 - **The context switch already existed.** `FPC_SETJMP` and `FPC_LONGJMP` save
   and restore the callee-saved registers and the stack pointer. A thread that
   has never run gets a jump buffer written out by hand instead of saved, with
-  the new stack in it and the entry point in the link register — `FPC_LONGJMP`
+  the new stack in it and the entry point in the link register - `FPC_LONGJMP`
   ends in a return through that register, so restoring such a buffer arrives
   at the entry point on the new stack. There is no assembly in the scheduler.
 
@@ -416,14 +414,13 @@ Three things in Free Pascal's own runtime do most of the work.
 application core until it stops.** There is no timer interrupt behind this
 scheduler and there is nothing that can take the core away.
 
-That is a property of the design, not a defect waiting for a fix. The only
-thing that could preempt a thread here is another core, and another core is
-outside the machine the guest can see — reaching for one would make the guest
-a multi-core computer, which is the one thing it must not become.
+The only thing that could preempt a thread here is another core, and another
+core is outside the machine the guest can see: reaching for one would make
+the guest a multi-core computer.
 
 What follows for a program written against it: **give the core up on purpose.**
-Every path that can wait already does — a contended critical section, either
-event family, an explicit `ThreadSwitch`, and every timed wait — and each of
+Every path that can wait already does - a contended critical section, either
+event family, an explicit `ThreadSwitch`, and every timed wait - and each of
 them services SDL on the way, because SDL is the only thing the guest speaks
 to and the audio callback runs from whatever calls into it. A thread that
 computes in a tight loop with none of those in it is a thread that has taken
@@ -498,7 +495,7 @@ gives a wrong answer that looks convincing.
   for a leak**, and it is exact.
 - **`CurrHeapFree` is the whole board's.** There is one heap, every core
   allocates from it, and the core that owns the devices keeps allocating from
-  it for as long as the board runs — USB plug-and-play and HID polling are on
+  it for as long as the board runs - USB plug-and-play and HID polling are on
   its service loop, on every lap. So this figure drifts downward under a
   Pascal program that is behaving perfectly, at a rate set by how long the
   program runs rather than by what it allocates. **It says whether memory is
@@ -517,7 +514,7 @@ Neither is a defect, and neither is this library's to change.
   dropped on free and the space is gone for the life of the boot. On a heap
   that never grows, a program that repeatedly allocates and frees something
   very large will exhaust it.
-- **A block is rounded up to its bucket, and the bucket sizes are far apart** —
+- **A block is rounded up to its bucket, and the bucket sizes are far apart** -
   64 bytes, then 1 KB, 4 KB, 16 KB, 64 KB, 256 KB, 512 KB. An allocation of
   1025 bytes occupies 4 KB. `MemSize` reports the true bucket size rather than
   the size that was asked for, so Free Pascal grows a string inside its own
@@ -543,7 +540,7 @@ does: through `circle-libsdl2`, calling SDL. Nothing in this library sits in
 that path, and there is no Pascal graphics layer here to learn.
 
 **The binding is not this project's.** A Pascal SDL program already carries
-one — the SDL2-for-Pascal unit set, in one generation or another — and that is
+one - the SDL2-for-Pascal unit set, in one generation or another - and that is
 the one to use, unchanged. A port to this board is then a relink rather than a
 rewrite, which is the only arrangement in which porting an existing game means
 anything. `patches/` carries the one hunk that binding needs to know this
@@ -557,14 +554,14 @@ directory as `SDL2_PASCAL_UNITS` and refuses to build without one.
 
 **`units/sdl2circle.pas` is this library's own, and it is one unit.** It
 declares the calls in `circle-libsdl2`'s `SDL_circle.h` that no SDL binding
-carries, because they are not in SDL's headers — chiefly the virtual display
+carries, because they are not in SDL's headers - chiefly the virtual display
 every application must declare before `SDL_Init`. An application names it
 beside its binding, exactly as a C application adds one `#include`. It depends
 on no binding and uses plain Free Pascal types, so it never argues with one
 over a type name.
 
 Only the application's half of that header is declared. A Circle host kernel
-is C++ — there is no other kind — so the calls that arm a core, create the
+is C++ - there is no other kind - so the calls that arm a core, create the
 servo or hand a core to presentation have no Pascal caller, and CLF-005 makes
 giving the guest a way to reach them a non-conformance rather than a
 convenience.
@@ -577,15 +574,15 @@ there. Every entry point that fills an event writes that many bytes.
 
 **The Pascal translations of that header carry the variants and not the
 padding**, so `TSDL_Event` is as large as its largest declared variant and no
-larger — which is smaller. Passing the address of a bare one to
+larger - which is smaller. Passing the address of a bare one to
 `SDL_PollEvent` hands SDL a buffer shorter than the one it will fill. On a
 desktop the overrun lands in another local; here it lands on a stack this
 library allocated, and Circle lays the core stacks out with no guard page
 between them.
 
 So an event is passed through a variant record whose other arm is a byte array
-past 56. `examples/m8` carries one and prints both sizes — its own and the C
-one, which its host kernel prints from the compiler that built the library —
+past 56. `examples/m8` carries one and prints both sizes - its own and the C
+one, which its host kernel prints from the compiler that built the library -
 so the difference is on the log rather than in a comment.
 
 ## Status
@@ -597,7 +594,7 @@ the console through `circle-libsdl2`.
 
 Elapsed time and timed waits are written and built, and `examples/m3` is the
 image that puts them to the board. That image has not run there, so the
-interface is implemented rather than proven — and a memory manager or a clock
+interface is implemented rather than proven - and a memory manager or a clock
 that is merely linked proves nothing, which is the whole reason each example
 reports its own verdict off the console.
 
@@ -633,16 +630,16 @@ that puts them to the board. That image has not run there. It works under one
 directory of its own making, `/tmp-clf-m7`, removes everything it wrote
 including the directory, and the host kernel then looks at the card itself, on
 the core that owns it, to see whether that is true. Every section of it runs a
-known answer through a unit and compares — a published digest, a round trip
-through its own bytes, a date the calendar fixes — because a unit that compiles
+known answer through a unit and compares - a published digest, a round trip
+through its own bytes, a date the calendar fixes - because a unit that compiles
 and then faults looks identical from the development host.
 
 **SDL runs on the board from Pascal, and `examples/m8` has drawn a picture
 there.** It declares a virtual display of its own that matches nothing on the
 board, makes a window, a renderer and textures in three formats, draws through
 every path the library offers, and then reads its own frames back with
-`SDL_RenderReadPixels` — which returns SDL's framebuffer in the coordinates the
-caller drew in — and compares them against what it drew, pixel by pixel,
+`SDL_RenderReadPixels` - which returns SDL's framebuffer in the coordinates the
+caller drew in - and compares them against what it drew, pixel by pixel,
 printing the tolerance beside each verdict. Every one of those comparisons
 agrees. It opens no file and leaves nothing on the card.
 
@@ -657,7 +654,7 @@ One check disagrees with `circle-libsdl2` rather than failing, and the program
 says which and prints the line that proves it. `SDL_WasInit(SDL_INIT_EVENTS)`
 answers zero after `SDL_Init(SDL_INIT_VIDEO)`, although the SDL2 header that
 library ships states the implication twice. The events subsystem is genuinely
-up — nothing later in the program could work otherwise — so this is the
+up - nothing later in the program could work otherwise - so this is the
 bookkeeping and not the machine, but it is bookkeeping applications branch on.
 It is recorded there to be raised, never worked around here.
 

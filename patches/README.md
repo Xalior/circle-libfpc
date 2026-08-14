@@ -2,7 +2,7 @@
 
 ## `sdl2-for-pascal-circlesdl2.patch`
 
-Applies to the **SDL2-for-Pascal** binding — the Pascal translation of SDL2's
+Applies to the **SDL2-for-Pascal** binding - the Pascal translation of SDL2's
 headers that Pascal SDL programs carry. The copy this was cut against is the
 one vendored in Fairtris (`source/sdl/`), and the same hunk applies to every
 generation of that binding, because the block it edits has not changed since
@@ -26,7 +26,7 @@ to reapply.
 The binding writes every declaration as `external SDL_LibName`, and declares
 `SDL_LibName` in three arms: Windows, Unix, and Classic Mac OS. A target that
 matches none of them leaves the constant undeclared, and the compile stops on
-the first declaration that uses it — with `identifier not found`, naming
+the first declaration that uses it - with `identifier not found`, naming
 neither the constant's purpose nor the platform. The patch adds a fourth arm
 for `circlesdl2`.
 
@@ -42,7 +42,7 @@ Each was tried against the compiler rather than reasoned about.
 - **`-dUNIX`** makes the binding's interface use the units `X`, `XLib` and
   `UnixType`, and `-dWINDOWS` makes it use `Windows`. None of those exists on
   this target, and writing stand-ins for them would be a far larger change
-  than this one — and a lie that reaches the record layouts in `sdlsyswm.inc`.
+  than this one - and a lie that reaches the record layouts in `sdlsyswm.inc`.
 
 - **`-dMACOS`** compiles, and produces an image that can never link. The
   binding's `jedi.inc` puts Free Pascal into Delphi mode (`{$MODE DELPHI}`),
@@ -60,7 +60,7 @@ Each was tried against the compiler rather than reasoned about.
 ### What it deliberately does not do
 
 It removes nothing and stubs nothing. The binding still declares the whole of
-SDL2, and the entry points this library does not implement stay declared —
+SDL2, and the entry points this library does not implement stay declared -
 Free Pascal emits a reference only where a call is written, so a declaration
 nobody calls costs nothing and never reaches the linker. That is the same
 behaviour a C consumer gets from a header, and it is what lets an application
