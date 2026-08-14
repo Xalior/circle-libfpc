@@ -2,8 +2,8 @@
 
 Each directory here is a Pascal program that proved one capability of this
 library on the board, in the order the library gained them: an entry point
-reached, threads, files, the standard packages, SDL. Read the top-level
-README.md for what each one proves in full.
+reached, threads, files, the standard packages, SDL. Read
+[docs/STATUS.md](../docs/STATUS.md) for what each one proves in full.
 
 These are not examples to copy. An example shows the platform used the way a
 real program uses it: Pascal source and a Makefile that sets what it needs,
