@@ -36,24 +36,21 @@ runs, and it runs whether or not the program ever calls `SDL_Init`.
 written, which is one of the reasons they are milestones rather than
 examples to copy.
 
-A read blocks until a key arrives, and it is answered from `Do_Read`
-(`fpc/rtl/circlesdl2/sysfile.inc`), the routine every target's runtime reads
-its console through. Every key is delivered the moment it is typed, one
-character at a time, echoed as it arrives - never held back until a line
-ends. That is why a plain `Read` of a single character returns on the very
-keystroke: it does not wait for a line to be finished and Enter pressed.
-`ReadLn`'s own wait for the line ending is Free Pascal's own, built out of
-repeated calls to `Read`, and each character in it still arrives only once
-its key is pressed.
+A read is answered from `Do_Read` (`fpc/rtl/circlesdl2/sysfile.inc`), the
+routine every target's runtime reads its console through. It assembles a
+whole line before it returns anything: it takes characters as they are
+typed, echoes what it keeps, and hands back the finished line when the line
+ending arrives. Free Pascal's own text buffer then holds that line and gives
+characters out of it as the program asks, so `ReadLn` receives the line and
+a `Read` of a single character receives the first character of it.
 
-Because a read is never held back for a line, there is no line discipline
-underneath it to edit one: backspace is delivered and echoed like any other
-character, not as an erase. A line typed with a mistake and then backspaced
-over is not corrected before Enter is pressed - what `ReadLn` reads back is
-every key that was pressed, backspace included, not the intended text.
+The line is edited as it is typed. Backspace, and the Delete a USB keyboard
+sends in its place, remove the last character from the line and erase it on
+screen. At the start of an empty line backspace does nothing and draws
+nothing, so it can never erase a prompt printed before the read began.
 
-`examples/keyprobe` proves a character arrives on typing rather than at
-Enter, reading nothing but standard input with no SDL unit and no window.
-`examples/readlnprobe` proves plain `ReadLn` - the stock keyword, not a
-routine of this project's - reads back the keys pressed up to the line
-ending, on a target that never initialises SDL either.
+`examples/readlnprobe` proves this with the stock `ReadLn` keyword and no
+routine of this project's, on a target that never initialises SDL: a line
+typed with a mistake and corrected before Enter is read back as the intended
+text. `examples/keyprobe` reads standard input a character at a time, with
+no SDL unit and no window.
