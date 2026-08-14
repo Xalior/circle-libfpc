@@ -43,10 +43,11 @@ interface
 {****************************************************************************
   The virtual display device
 
-  This is required, with no fallback: not the boot command line, not the
-  panel, nothing. An application that has not declared a virtual device
-  has not said what display it is to be given, so SDL_Init refuses to
-  start the library rather than invent one, and says why on the console.
+  Calling this is optional. circle-libsdl2 settles the display size from
+  the first of these that is present, in order: the --rapi-vdisplay=WxH
+  boot switch, this declaration, the size the program's first
+  SDL_CreateWindow asks for, or, last, the physical panel's own size read
+  from the firmware. SDL_Init never refuses to start for want of a size.
 ****************************************************************************}
 
 { Declare the display the application is to be given: a depth, and a
