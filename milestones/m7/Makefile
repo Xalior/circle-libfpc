@@ -3,7 +3,7 @@
 #
 #   gmake                build the kernel image for BOARD
 #   gmake BOARD=rpi5     build against another board's world
-#   gmake clean-board    drop this example's objects, blob and image
+#   gmake clean-board    drop this milestone's objects, blob and image
 #
 # Everything is built under build/$(BOARD), so one board's build never answers
 # for another's — and `clean-board` rather than `clean` because Circle's
@@ -113,7 +113,7 @@ include $(LIBFPC_HOME)/fpc-app.mk
 # reports the first unit it cannot find and says nothing about why — so this
 # says it here instead.
 ifeq ($(strip $(FPC_PACKAGE_UNITS)),)
-$(error no package units under $(FPC_PACKAGES). Build them with `gmake fpc-packages' in the parent repository; this example is written in units that live there)
+$(error no package units under $(FPC_PACKAGES). Build them with `gmake fpc-packages' in the parent repository; this milestone is written in units that live there)
 endif
 
 # The program's own object joins the kernel's. sdl-app-init.ld defers the

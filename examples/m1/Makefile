@@ -1,12 +1,14 @@
 #
-# circle-libfpc M1 — a Free Pascal program with a heap.
+# circle-libfpc m1 -- a Free Pascal program with a heap, linked into
+# circle-libfpc's own generic host kernel (host/host-kernel.mk) rather than a
+# kernel of its own.
 #
 #   gmake                build the kernel image for BOARD
-#   gmake BOARD=rpi5     build against another board's world
-#   gmake clean-board    drop this example's objects, blob and image
+#   gmake BOARD=rpi5      build against another board's world
+#   gmake clean-board     drop this example's objects, blob and image
 #
 # Everything is built under build/$(BOARD), so one board's build never answers
-# for another's — and `clean-board` rather than `clean` because Circle's
+# for another's -- and `clean-board` rather than `clean` because Circle's
 # Rules.mk already defines a `clean`, and two recipes for one target make GNU
 # make warn on every build.
 #
@@ -19,7 +21,7 @@ BOARDS = rpi3 rpi4 rpi5
 BOARD ?= rpi5
 
 ifeq ($(filter $(BOARD),$(BOARDS)),)
-$(error BOARD must be one of: $(BOARDS) — not `$(BOARD)')
+$(error BOARD must be one of: $(BOARDS) -- not `$(BOARD)')
 endif
 
 # The image name is the one Circle gives each board, and the boot server
@@ -30,14 +32,14 @@ IMAGE_rpi5 = kernel_2712
 IMAGE      = $(IMAGE_$(BOARD))
 
 LIBFPC_HOME   ?= $(CURDIR)/../..
-CIRCLE_WORLDS ?= $(LIBFPC_HOME)
-SHIM          ?= $(LIBFPC_HOME)
+CIRCLE_WORLDS ?= $(LIBFPC_HOME)/circle-libsdl2
+SHIM          ?= $(LIBFPC_HOME)/circle-libsdl2
 
 FPC_COMPILER ?= $(LIBFPC_HOME)/fpc/compiler/ppcrossa64
 FPC_UNITS    ?= $(LIBFPC_HOME)/fpc/rtl/units/aarch64-circlesdl2
 
 # The board's configured world. A missing one is a wrong variable, never a
-# world build to start — they are circle-libsdl2's to build. Named here so it
+# world build to start -- they are circle-libsdl2's to build. Named here so it
 # arrives as that rather than as make having no rule for a Config.mk.
 WORLD = $(CIRCLE_WORLDS)/circle-stdlib-$(BOARD)
 ifeq ($(wildcard $(WORLD)/Config.mk),)
@@ -53,23 +55,8 @@ TARGET = $(OBJDIR)/$(IMAGE)
 # makefile, and that would otherwise decide the default goal.
 .DEFAULT_GOAL := all
 
-# The host kernel's own translation units. Nothing here is SDL, and nothing
-# here is Free Pascal — it is the board being brought up and the Pascal entry
-# point being called.
-HOST_OBJS = $(OBJDIR)/main.o $(OBJDIR)/kernel.o
-OBJS      = $(HOST_OBJS)
-
-STANDARD = -std=c++23 -Wno-volatile
-
-# Dependency files are written while compiling rather than by rules of their
-# own, and Circle's Rules.mk is told to keep its hands off (CHECK_DEPS) so its
-# `-M -MG` rules are not defined for these objects: -MG stops the build on a
-# header it has no rule for, and GNU make 3.81 does so with no output at all.
-# -MP adds a recipeless rule for every header named, so a header that
-# disappears is a rebuild instead of a dead stop.
+STANDARD   = -std=c++23 -Wno-volatile
 CHECK_DEPS = 0
-DEPFLAGS   = -MD -MP
-DEPS       = $(HOST_OBJS:.o=.d)
 
 # sdl-app.mk replaces Circle's own $(TARGET).img rule. Two recipes for one
 # target make GNU make warn on every board of every build, which reads like a
@@ -80,8 +67,11 @@ TARGET := $(OBJDIR)/.circle-unused
 include $(CIRCLEHOME)/Rules.mk
 TARGET := $(SDL_APP_IMAGE)
 
-INCLUDE := -I $(LIBFPC_HOME)/include -I $(SHIM)/include \
-	   $(CIRCLE_STDLIB_INCLUDES) $(INCLUDE)
+# circle-libfpc's own host kernel: the board bring-up, the core split, the
+# card mount and the C library's standard descriptors, none of it written
+# here. It sets INCLUDE for both this library's and circle-libsdl2's headers.
+include $(LIBFPC_HOME)/host/host-kernel.mk
+OBJS = $(HOST_KERNEL_OBJS)
 
 # The Pascal program. fpc-app.mk needs PREFIX and AR, which Rules.mk has just
 # settled, and its results have to be in hand before LIBS and OBJS are
@@ -100,18 +90,6 @@ OBJS += $(FPC_APP_OBJS)
 # --start-group with everything else: the program's object and the runtime
 # refer to each other in both directions, so neither can simply come first.
 LIBS := $(FPC_APP_LIBS) $(SHIM)/libSDL2-$(BOARD).a $(CIRCLE_STDLIB_LIBS)
-
-# Per-board compile into $(OBJDIR). Circle's Rules.mk builds objects beside
-# their source; this more specific rule wins for the board-scoped paths. Same
-# recipe as Rules.mk, plus $(DEPFLAGS) and a redirected output directory.
-$(OBJDIR)/%.o: %.cpp | $(OBJDIR)
-	@echo "  CPP   $@"
-	@$(CPP) $(CPPFLAGS) $(DEPFLAGS) -c -o $@ $<
-
-$(OBJDIR):
-	@mkdir -p $(OBJDIR)
-
--include $(DEPS)
 
 include $(SHIM)/sdl-app.mk
 

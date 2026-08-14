@@ -1,19 +1,14 @@
 #
-# circle-libfpc M5 — Pascal files on the card, through circle-libsdl2's file
-# service.
+# circle-libfpc M0 — a Free Pascal program linked into a Circle host kernel.
 #
 #   gmake                build the kernel image for BOARD
 #   gmake BOARD=rpi5     build against another board's world
-#   gmake clean-board    drop this example's objects, blob and image
+#   gmake clean-board    drop this milestone's objects, blob and image
 #
 # Everything is built under build/$(BOARD), so one board's build never answers
 # for another's — and `clean-board` rather than `clean` because Circle's
 # Rules.mk already defines a `clean`, and two recipes for one target make GNU
 # make warn on every build.
-#
-# THIS EXAMPLE'S BUILD CARRIES A CHECK THE OTHERS DO NOT. See the bottom of
-# this file: the Pascal side is not allowed to reference any of the C
-# library's file calls, and the build stops if it does.
 #
 
 ifeq ($(filter 1.% 2.% 3.%,$(MAKE_VERSION)),$(MAKE_VERSION))
@@ -59,8 +54,8 @@ TARGET = $(OBJDIR)/$(IMAGE)
 .DEFAULT_GOAL := all
 
 # The host kernel's own translation units. Nothing here is SDL, and nothing
-# here is Free Pascal — it is the board being brought up, the card being
-# mounted, and the Pascal entry point being called.
+# here is Free Pascal — it is the board being brought up and the Pascal entry
+# point being called.
 HOST_OBJS = $(OBJDIR)/main.o $(OBJDIR)/kernel.o
 OBJS      = $(HOST_OBJS)
 
@@ -91,7 +86,7 @@ INCLUDE := -I $(LIBFPC_HOME)/include -I $(SHIM)/include \
 # The Pascal program. fpc-app.mk needs PREFIX and AR, which Rules.mk has just
 # settled, and its results have to be in hand before LIBS and OBJS are
 # finished below.
-FPC_APP      = m5.pas
+FPC_APP      = m0.pas
 FPC_BLOB_DIR = $(OBJDIR)/fpcblob
 include $(LIBFPC_HOME)/fpc-app.mk
 
@@ -119,63 +114,6 @@ $(OBJDIR):
 -include $(DEPS)
 
 include $(SHIM)/sdl-app.mk
-
-# ---------------------------------------------------------------------------
-# THE PASCAL SIDE MUST NOT BE ABLE TO REACH THE CARD.
-#
-# CLF-003 and CLF-006 make a direct device access from this library or from
-# Pascal application code a non-conformance rather than an untidiness, and a
-# claim in a comment is not a check. This one is.
-#
-# Every route from Pascal to the card that is not circle-libsdl2's file
-# service has to resolve one of the names below: the C library's file
-# syscalls, its stdio and directory calls, or FatFs itself. So the Pascal
-# program's object, the Free Pascal runtime archive and this library's own C
-# half are read for their UNDEFINED symbols, and the build stops if any of
-# those names is among them.
-#
-# It would catch a real violation, because there is no way to call one of
-# these without naming it: they are C symbols resolved at link time, and this
-# runs before the link.
-#
-# What it does NOT cover, said plainly: a call made through a function pointer
-# handed over from the C++ side, and the C half of this library reaching a
-# device by inline assembly. The first is not a shape anything here uses; the
-# second is covered by the same read, because libfpc's archive is in the list.
-# ---------------------------------------------------------------------------
-
-CARD_SYMBOLS = \
-	open close read write lseek fstat stat lstat fsync ftruncate truncate \
-	_open _close _read _write _lseek _fstat _stat _fsync \
-	unlink _unlink remove rename _rename mkdir rmdir chdir getcwd \
-	opendir readdir closedir rewinddir fdopendir scandir \
-	fopen fdopen freopen fclose fread fwrite fseek fseeko ftell ftello \
-	fgets fputs fgetc fputc fprintf fscanf rewind setvbuf tmpfile \
-	f_open f_close f_read f_write f_lseek f_sync f_truncate f_stat \
-	f_unlink f_mkdir f_chdir f_getcwd f_rename f_opendir f_readdir \
-	f_closedir f_mount f_size f_tell
-
-PASCAL_SIDE = $(FPC_APP_OBJS) $(FPC_APP_LIBS)
-
-$(OBJDIR)/no-card-route.stamp: $(PASCAL_SIDE) | $(OBJDIR)
-	@echo "  CHECK $@"
-	@$(PREFIX)nm -u --format=posix $(PASCAL_SIDE) \
-		| awk '$$2 == "U" { print $$1 }' | sort -u > $(OBJDIR)/pascal-undefined.txt
-	@bad=""; \
-	for s in $(CARD_SYMBOLS); do \
-		if grep -qx "$$s" $(OBJDIR)/pascal-undefined.txt; then bad="$$bad $$s"; fi; \
-	done; \
-	if [ -n "$$bad" ]; then \
-		echo "the Pascal side references the C library's own card route:$$bad" >&2; \
-		echo "CLF-003: every crossing goes through circle-libsdl2. See $(OBJDIR)/pascal-undefined.txt." >&2; \
-		exit 1; \
-	fi
-	@echo "  ---   the Pascal side reaches the card only through:"
-	@grep '^SDL2Circle_IO' $(OBJDIR)/pascal-undefined.txt | sed 's/^/        /'
-	@touch $@
-
-# The image is not built until that has passed.
-$(TARGET).img: $(OBJDIR)/no-card-route.stamp
 
 .PHONY: all clean-board
 

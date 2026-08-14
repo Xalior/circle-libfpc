@@ -1,9 +1,9 @@
 #
-# circle-libfpc M0 — a Free Pascal program linked into a Circle host kernel.
+# circle-libfpc M8 — SDL, driven from Free Pascal.
 #
 #   gmake                build the kernel image for BOARD
 #   gmake BOARD=rpi5     build against another board's world
-#   gmake clean-board    drop this example's objects, blob and image
+#   gmake clean-board    drop this milestone's objects, blob and image
 #
 # Everything is built under build/$(BOARD), so one board's build never answers
 # for another's — and `clean-board` rather than `clean` because Circle's
@@ -83,10 +83,34 @@ TARGET := $(SDL_APP_IMAGE)
 INCLUDE := -I $(LIBFPC_HOME)/include -I $(SHIM)/include \
 	   $(CIRCLE_STDLIB_INCLUDES) $(INCLUDE)
 
+# THE SDL2 BINDING THE PROGRAM IS WRITTEN AGAINST, AS PASCAL SOURCE.
+#
+# It is not this project's, and it is not built into the runtime: it is the
+# ordinary Pascal SDL2 binding that Pascal SDL programs already carry, named
+# here as a source directory so that the compiler builds it beside the program
+# the way it does for the game that shipped it. A port is then a relink.
+#
+# SDL2_PASCAL_UNITS says where that binding is. It defaults to this
+# library's own vendored copy — third-party/sdl2-for-pascal, which already
+# carries the CIRCLESDL2 patch described in patches/README.md — so this
+# milestone builds with nothing pointing outside the repository. A program
+# porting a different copy of the binding overrides it.
+#
+# THE SECOND DIRECTORY IS THIS LIBRARY'S OWN, and it holds one unit:
+# circle-libsdl2's Circle extensions, which no SDL binding carries because
+# they are not in SDL's headers. An application names it beside its binding,
+# exactly as a C application adds one #include.
+SDL2_PASCAL_UNITS ?= $(LIBFPC_HOME)/third-party/sdl2-for-pascal
+ifeq ($(strip $(SDL2_PASCAL_UNITS)),)
+$(error set SDL2_PASCAL_UNITS to the directory holding the Pascal SDL2 binding (sdl2.pas and its .inc files))
+endif
+
+FPC_UNIT_SRC_DIRS = $(SDL2_PASCAL_UNITS) $(LIBFPC_HOME)/units
+
 # The Pascal program. fpc-app.mk needs PREFIX and AR, which Rules.mk has just
 # settled, and its results have to be in hand before LIBS and OBJS are
 # finished below.
-FPC_APP      = m0.pas
+FPC_APP      = m8.pas
 FPC_BLOB_DIR = $(OBJDIR)/fpcblob
 include $(LIBFPC_HOME)/fpc-app.mk
 

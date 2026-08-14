@@ -21,7 +21,7 @@ target that binds Circle directly.
 ## Building
 
 ```sh
-gmake                 # this board's archive and every example image
+gmake                 # this board's archive, every example and milestone image
 gmake BOARD=rpi5      # build against another board's world
 gmake rebuild         # build from nothing
 ```
@@ -43,31 +43,39 @@ timestamps to the second; Homebrew installs a current one as `gmake`.
 
 A host kernel builds the Pascal application by including `fpc-app.mk` after
 Circle's `Rules.mk` and before `circle-libsdl2`'s `sdl-app.mk`. Read that
-file's header for what it needs and what it hands back, and
-`examples/m0/Makefile` for the whole of a working consumer. The rest are the
-same kernel with a different Pascal program inside it: `examples/m2` prints,
-`examples/m1` allocates, `examples/m3` measures time, `examples/m4` runs
-threads, `examples/m5` reads and writes files, `examples/m6` does the same
-through `SysUtils` and `TFileStream`, `examples/m7` exercises the standard
-library, and `examples/m8` drives SDL. The host kernels of `m5`, `m6` and `m7`
-are the ones that bring up the SD card, because a program that opens a file
-needs one mounted before its core is released; `m8`'s is the one that runs a
-presentation core, because it is the only one that draws.
+file's header for what it needs and what it hands back.
+
+`host/` holds the kernel every example in this repository links into:
+`host/kernel.cpp` and `host/kernel.h`, brought in by `host/host-kernel.mk`,
+included the same way as `fpc-app.mk`. Read its header for what a port's
+Makefile sets and includes, and `examples/m2/Makefile` for the whole of a
+working consumer. It takes `RAPI_WORK_DIR`, the working directory on the
+card, and turns it into the kernel's own build-time define. It does not read
+`RAPI_VDISPLAY`: a port stamps that into the built image separately, through
+`circle-libsdl2`'s `tools/stamp-bootargs`.
 
 Free Pascal compiles the program to relocatable objects; Circle's own build
 does the link. The target refuses to produce an executable, deliberately, and
 `fpc-compile.sh` explains what that means for reading the compiler's result.
 
-`host/` holds a second kernel, `host/kernel.cpp` and `host/kernel.h`, separate
-from the examples' own. `host/host-kernel.mk` is the Makefile fragment that
-supplies it, included the same way as `fpc-app.mk`; read its header for what a
-port's Makefile sets and includes. It takes `RAPI_WORK_DIR`, the working
-directory on the card, and turns it into the kernel's own build-time define.
-It does not read `RAPI_VDISPLAY`: a port stamps that into the built image
-separately, through `circle-libsdl2`'s `tools/stamp-bootargs`.
+`examples/` holds Pascal source and a Makefile apiece, each linked against
+that one kernel: `examples/keyprobe` and `examples/readlnprobe` read standard
+input, `examples/m1` allocates, `examples/m2` prints, and `examples/m3`
+measures time. `fairtris2` in the parent repository is a consumer of the same
+kernel.
 
-`examples/m0` through `m8` do not use this kernel; each writes its own.
-`fairtris2` in the parent repository is a consumer of this one.
+`milestones/` holds the programs that proved this library's own capabilities
+as it gained them, each keeping a kernel of its own rather than `host/`'s:
+`milestones/m0` is the first Pascal entry point reached; `milestones/m4` runs
+threads; `milestones/m5` reads and writes files; `milestones/m6` does the
+same through `SysUtils` and `TFileStream`; `milestones/m7` exercises the
+standard library; `milestones/m8` drives SDL. Each keeps its own kernel
+because part of what it proves can only be checked from the core that owns
+the devices, independently of the Pascal side under test — read
+`milestones/README.md`. The host kernels of `m5`, `m6` and `m7` are the ones
+that bring up the SD card, because a program that opens a file needs one
+mounted before its core is released; `m8`'s is the one that runs a
+presentation core, because it is the only one that draws.
 
 ## Console output
 
@@ -91,8 +99,13 @@ reports the loss on the console. `writeln` therefore always reports success.
 Read `circle-libsdl2/docs/LOGGING.md` for what that costs and how fast the
 console really is.
 
-There is no console input. A `readln` from the keyboard reports that it did
-nothing.
+**Console input works.** `circle-libsdl2` binds all three of the C library's
+standard descriptors to a real console, keyboard included, so `Read` and
+`ReadLn` reach it the same way `writeln` reaches the log channel. A read
+blocks until a key arrives. `examples/keyprobe` proves a single character
+arrives; `examples/readlnprobe` proves plain `ReadLn` reads an edited line —
+backspace removes the character behind it, and what is on screen when Enter
+is pressed is what the program reads back.
 
 ## Files and directories
 
@@ -154,13 +167,13 @@ the one thing outside that, and it shares the setting if it uses relative
 names. A program that will not rely on either agreement gives absolute names,
 which the setting does not affect.
 
-**A host kernel has to bring the card up itself**, on core 0, before it
-releases the application core - the EMMC device, the FAT mount, and the C
-library's standard descriptors. Read `examples/m5/kernel.cpp` for the order and
-why it is that order. The descriptors matter as much as the mount: the C
-library hands out the lowest free one, and the Free Pascal runtime reads 0, 1
-and 2 as the console, so a kernel that skips `CGlueStdioInit` gets a file whose
-every write goes to the log with nothing saying so.
+**A host kernel that wants file access has to bring the card up itself**, on
+core 0, before it releases the application core - the EMMC device and the FAT
+mount. Read `host/kernel.cpp` for the order and why it is that order.
+`circle-libsdl2` binds the C library's three standard descriptors itself now,
+always, so a host kernel does not do that step. `milestones/m5`'s kernel still
+does, by hand, from before that was true - kept as it was written, which is
+one of the reasons it is a milestone rather than an example to copy.
 
 Nothing here uses the linker's `--wrap`. That is the pattern for an application
 with no file layer of its own; this library is the file layer, so it points
@@ -229,15 +242,15 @@ thread.
 
 `TThread` is this library's scheduler with an object on top: `BeginThread`,
 `SuspendThread`, `ResumeThread` and `WaitForThreadTerminate`, which are the
-portable interface over the scheduler `examples/m4` proves. Nothing preempts,
+portable interface over the scheduler `milestones/m4` proves. Nothing preempts,
 so a thread created unsuspended is on the run list from the moment
 `TThread.Create` returns but does not run until the thread that made it gives
 the core away. Priorities are one value here, so `TThread.GetPriority` always
 answers `tpNormal` and setting one changes nothing.
 
-`examples/m6` is a Pascal program that proves all of this on the board, and its
-host kernel walks the same directory from the core that owns the card to check
-the guest's search against a count it made itself.
+`milestones/m6` is a Pascal program that proves all of this on the board, and
+its host kernel walks the same directory from the core that owns the card to
+check the guest's search against a count it made itself.
 
 ## The standard library
 
@@ -452,7 +465,7 @@ the processor's own core number at every entry to the scheduler and at every
 thread's first instruction, compares it with the core recorded before any
 thread existed, and stops the program with both numbers if they differ.
 
-`examples/m4` is a Pascal program that proves all of this on the board, and
+`milestones/m4` is a Pascal program that proves all of this on the board, and
 its host kernel counts Circle's task list from the core that owns it,
 throughout the run, to answer the half of the question the guest cannot.
 
@@ -549,16 +562,17 @@ do not work.
 
 **Point `FPC_UNIT_SRC_DIRS` at the binding's source.** `fpc-app.mk` compiles
 every unit it finds there beside the program and links their objects; read its
-header for the whole of that. `examples/m8/Makefile` takes the binding's
+header for the whole of that. `milestones/m8/Makefile` takes the binding's
 directory as `SDL2_PASCAL_UNITS` and refuses to build without one.
 
 **`units/sdl2circle.pas` is this library's own, and it is one unit.** It
 declares the calls in `circle-libsdl2`'s `SDL_circle.h` that no SDL binding
-carries, because they are not in SDL's headers - chiefly the virtual display
-every application must declare before `SDL_Init`. An application names it
-beside its binding, exactly as a C application adds one `#include`. It depends
-on no binding and uses plain Free Pascal types, so it never argues with one
-over a type name.
+carries, because they are not in SDL's headers - chiefly the virtual display,
+which an application may declare before `SDL_Init` if it wants a canvas of its
+own rather than the one its first window, the boot switch, or the physical
+panel would settle for it. An application names the unit beside its binding,
+exactly as a C application adds one `#include`. It depends on no binding and
+uses plain Free Pascal types, so it never argues with one over a type name.
 
 Only the application's half of that header is declared. A Circle host kernel
 is C++ - there is no other kind - so the calls that arm a core, create the
@@ -581,7 +595,7 @@ library allocated, and Circle lays the core stacks out with no guard page
 between them.
 
 So an event is passed through a variant record whose other arm is a byte array
-past 56. `examples/m8` carries one and prints both sizes - its own and the C
+past 56. `milestones/m8` carries one and prints both sizes - its own and the C
 one, which its host kernel prints from the compiler that built the library -
 so the difference is on the log rather than in a comment.
 
@@ -598,7 +612,7 @@ interface is implemented rather than proven - and a memory manager or a clock
 that is merely linked proves nothing, which is the whole reason each example
 reports its own verdict off the console.
 
-The thread manager is written and built, and `examples/m4` is the image that
+The thread manager is written and built, and `milestones/m4` is the image that
 puts it to the board. That image has not run there either, and a thread
 manager is the interface a clean link says least about: both records install
 at run time and start as pointers that go nowhere, so a program that never
@@ -609,7 +623,7 @@ cooperative thread from outside means abandoning it wherever it happens to
 be, and there is no unwinding here that could put that right. Thread
 priorities are one value, so setting one reports that it was not set.
 
-The file and directory layer is written and built, and `examples/m5` is the
+The file and directory layer is written and built, and `milestones/m5` is the
 image that puts it to the board. That image has not run there either. It works
 under two directories of its own making, `/tmp-clf-m5` and `/tmp-clf-m5-gone`,
 and touches nothing outside them: it removes the second itself, erases its own
@@ -619,13 +633,13 @@ working directory inside `/tmp-clf-m5`, so the host kernel can read that on the
 same core and see for itself where `ChDir` put it.
 
 The `SysUtils` file family, `Classes` and `TFileStream` are written and built,
-and `examples/m6` is the image that puts them to the board. That image has not
+and `milestones/m6` is the image that puts them to the board. That image has not
 run there either. It works under one directory of its own making,
 `/tmp-clf-m6`, and touches nothing outside it: it removes its own working files
 and leaves a witness and the four files its directory search ran over, for the
 host kernel to count on the core that owns the card and then remove.
 
-Free Pascal's packages are built for the target, and `examples/m7` is the image
+Free Pascal's packages are built for the target, and `milestones/m7` is the image
 that puts them to the board. That image has not run there. It works under one
 directory of its own making, `/tmp-clf-m7`, removes everything it wrote
 including the directory, and the host kernel then looks at the card itself, on
@@ -634,7 +648,7 @@ known answer through a unit and compares - a published digest, a round trip
 through its own bytes, a date the calendar fixes - because a unit that compiles
 and then faults looks identical from the development host.
 
-**SDL runs on the board from Pascal, and `examples/m8` has drawn a picture
+**SDL runs on the board from Pascal, and `milestones/m8` has drawn a picture
 there.** It declares a virtual display of its own that matches nothing on the
 board, makes a window, a renderer and textures in three formats, draws through
 every path the library offers, and then reads its own frames back with
@@ -658,5 +672,7 @@ up - nothing later in the program could work otherwise - so this is the
 bookkeeping and not the machine, but it is bookkeeping applications branch on.
 It is recorded there to be raised, never worked around here.
 
-There is no console input through the Free Pascal runtime, so `ReadLn` does not
-work yet. That is a separate question from SDL's keyboard, which does.
+Console input through the Free Pascal runtime works: `examples/keyprobe` and
+`examples/readlnprobe` prove `Read` and `ReadLn` reach a real keyboard, with
+no SDL unit and no window. That is a separate question from SDL's own keyboard
+reading, which `milestones/m8` proves.
