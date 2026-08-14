@@ -1,9 +1,10 @@
 #
-# circle-libfpc lineprobe -- a Free Pascal program that never touches SDL,
+# circle-libfpc readlnprobe -- a Free Pascal program that never touches SDL,
 # linked into circle-libfpc's own generic host kernel (host/host-kernel.mk)
 # rather than a kernel of its own, the way examples/m0 through m8 each carry
-# one. Beside keyprobe, which proves a single character arrives the instant
-# its key is pressed; this one proves a line arrives edited.
+# one. Beside keyprobe, which proves a single character arrives; this one
+# proves plain ReadLn -- the stock keyword every Pascal program uses -- reads
+# an edited line.
 #
 #   gmake                build the kernel image for BOARD
 #   gmake BOARD=rpi5      build against another board's world
@@ -78,7 +79,7 @@ OBJS = $(HOST_KERNEL_OBJS)
 # The Pascal program. fpc-app.mk needs PREFIX and AR, which Rules.mk has just
 # settled, and its results have to be in hand before LIBS and OBJS are
 # finished below.
-FPC_APP      = lineprobe.pas
+FPC_APP      = readlnprobe.pas
 FPC_BLOB_DIR = $(OBJDIR)/fpcblob
 include $(LIBFPC_HOME)/fpc-app.mk
 
