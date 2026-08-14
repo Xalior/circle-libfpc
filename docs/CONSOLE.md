@@ -31,10 +31,6 @@ call every host kernel makes, on core 0, before it releases the application
 core. No kernel builds a `CConsole` or calls `CGlueStdioInit` itself: the
 library's own `SDL2Circle_StdioInit` does both, the moment `ArmCoreRuntime`
 runs, and it runs whether or not the program ever calls `SDL_Init`.
-`milestones/m5`, `m6` and `m7` still build a `CConsole` and call
-`CGlueStdioInit` by hand, from before that was true - kept as they were
-written, which is one of the reasons they are milestones rather than
-examples to copy.
 
 A read is answered from `Do_Read` (`fpc/rtl/circlesdl2/sysfile.inc`), the
 routine every target's runtime reads its console through. It assembles a

@@ -68,7 +68,3 @@ Nothing preempts, so a thread created unsuspended is on the run list from the
 moment `TThread.Create` returns but does not run until the thread that made it
 gives the core away. Priorities are one value here, so `TThread.GetPriority`
 always answers `tpNormal` and setting one changes nothing.
-
-`milestones/m6` is a Pascal program that proves all of this on the board, and
-its host kernel walks the same directory from the core that owns the card to
-check the guest's search against a count it made itself.

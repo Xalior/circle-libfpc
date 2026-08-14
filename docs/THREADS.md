@@ -77,7 +77,3 @@ chosen against. A request below the runtime's own minimum is refused by
 the processor's own core number at every entry to the scheduler and at every
 thread's first instruction, compares it with the core recorded before any
 thread existed, and stops the program with both numbers if they differ.
-
-`milestones/m4` is a Pascal program that proves all of this on the board, and
-its host kernel counts Circle's task list from the core that owns it,
-throughout the run, to answer the half of the question the guest cannot.

@@ -14,7 +14,7 @@ The Free Pascal target is `circlesdl2`.
 ## Building
 
 ```sh
-gmake                 # this board's archive, every example and milestone image
+gmake                 # this board's archive and every example image
 gmake BOARD=rpi5      # build against another board's world
 gmake rebuild         # build from nothing
 ```
@@ -25,7 +25,7 @@ compiling a Pascal program into a bootable image.
 ## What a Pascal program can use
 
 - **[Building a kernel](docs/BUILDING.md)** - the host kernel, a port's
-  Makefile, the display size, the working directory, examples and milestones
+  Makefile, the display size, the working directory and examples
 - **[Console](docs/CONSOLE.md)** - `writeln`, `Read` and `ReadLn`
 - **[Files and directories](docs/FILES.md)** - `Assign`, `Reset`,
   `BlockRead` and the rest, and the working directory
@@ -39,8 +39,3 @@ compiling a Pascal program into a bootable image.
 - **[The heap](docs/HEAP.md)** - `TMemoryManager`, `GetFPCHeapStatus`,
   Circle's allocator
 - **[SDL](docs/SDL.md)** - reaching the display and the keyboard from Pascal
-
-## Status
-
-[Status](docs/STATUS.md) says how far each of the above has been proven on a
-board.

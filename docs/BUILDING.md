@@ -4,24 +4,23 @@
 
 ```sh
 gmake                  # show the targets (the default goal)
-gmake all              # this board's archive, every example and milestone image
+gmake all              # this board's archive and every example image
 gmake lib              # just the archive, for BOARD
 gmake all-boards       # the archive, for every board this library supports
 gmake examples         # every example under examples/, freshly linked
-gmake milestones       # every milestone under milestones/, freshly linked
 gmake BOARD=rpi5       # build against another board's world
 gmake rebuild          # build from nothing
 ```
 
-`examples` and `milestones` are read off the directories on disk, not kept by
-hand: a directory counts only if it carries a Makefile of its own, so a new
-example or milestone is picked up the moment it gains one, and a leftover
-build-only directory with no Makefile is not mistaken for a program to
-build. Both targets delete the archive and rebuild it before the sweep
-starts, and delete each program's own image before that program is built,
-so a stale archive or a leftover image can never stand in for a rebuild
-that did not happen. Both keep going past a program that fails to build,
-and report at the end which ones built and which did not.
+`examples` is read off the directories on disk, not kept by hand: a
+directory counts only if it carries a Makefile of its own, so a new example
+is picked up the moment it gains one, and a leftover build-only directory
+with no Makefile is not mistaken for a program to build. The target deletes
+the archive and rebuilds it before the sweep starts, and deletes each
+program's own image before that program is built, so a stale archive or a
+leftover image can never stand in for a rebuild that did not happen. It
+keeps going past a program that fails to build, and reports at the end
+which ones built and which did not.
 
 The build needs three things it never produces: a configured Circle world, the
 `circle-libsdl2` archive for the same board, and the Free Pascal
@@ -85,23 +84,12 @@ first and refusing an image that was not linked with room for it. **A loader
 can overwrite the same block over the wire, at boot, with no rebuild** - the
 library reads whichever bytes are in the block when the image runs, so a
 switch a loader writes at boot still wins over one a port stamped in at build
-time. No example or milestone in this repository stamps a display size today;
-each settles its canvas from its window's own size or the physical panel.
+time. No example in this repository stamps a display size today; each
+settles its canvas from its window's own size or the physical panel.
 
-## Examples and milestones
+## Examples
 
 `examples/` holds Pascal source and a Makefile apiece, each linked against the
 one host kernel in `host/`: `examples/keyprobe` and `examples/readlnprobe`
 read standard input, `examples/m1` allocates, `examples/m2` prints, and
 `examples/m3` measures time.
-
-`milestones/` holds the programs that proved this library's own capabilities
-as it gained them, each keeping a kernel of its own rather than `host/`'s:
-`milestones/m0` is the first Pascal entry point reached; `milestones/m4` runs
-threads; `milestones/m5` reads and writes files; `milestones/m6` does the
-same through `SysUtils` and `TFileStream`; `milestones/m7` exercises the
-standard library; `milestones/m8` drives SDL. Each keeps its own kernel
-because part of what it proves can only be checked from the core that owns
-the devices, independently of the Pascal side under test - read
-`milestones/README.md`. They are verification programs, not a pattern to
-copy: a program on this target is written the way an example is.

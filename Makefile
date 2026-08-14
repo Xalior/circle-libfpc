@@ -2,35 +2,29 @@
 # circle-libfpc — the Free Pascal runtime, resolved against Circle.
 #
 #   gmake                show this message (the default goal)
-#   gmake all            this board's archive, every example and every
-#                        milestone image
+#   gmake all            this board's archive and every example
 #   gmake lib            just the archive, for BOARD
 #   gmake all-boards     the archive, for every board this library supports
 #   gmake examples       every example under examples/, freshly linked
-#   gmake milestones     every milestone under milestones/, freshly linked
 #   gmake BOARD=rpi5     build against another board's world
-#   gmake clean-board    drop this board's objects, archive, example and
-#                        milestone builds
+#   gmake clean-board    drop this board's objects, archive and example
+#                        builds
 #   gmake rebuild        clean-board, then build from nothing
 #
 # examples/ holds Pascal source and a Makefile apiece, linked into this
 # library's own shared host kernel (host/host-kernel.mk) — the pattern a
-# program on this target actually uses. milestones/ holds the programs that
-# proved this library's own capabilities as it gained them; each keeps a host
-# kernel of its own because part of what it proves can only be checked from
-# the core that owns the devices, independently of the Pascal side under
-# test. Read milestones/README.md.
+# program on this target actually uses.
 #
-# EXAMPLES and MILESTONES are read off the directories on disk, not kept by
-# hand: a directory counts only if it carries a Makefile of its own, so a
-# leftover build-only directory answers for nothing and a program gets built
-# the moment it gains a Makefile, with nobody having to remember to list it.
+# EXAMPLES is read off the directories on disk, not kept by hand: a directory
+# counts only if it carries a Makefile of its own, so a leftover build-only
+# directory answers for nothing and a program gets built the moment it gains
+# a Makefile, with nobody having to remember to list it.
 #
-# `examples` and `milestones` delete the archive and rebuild it before the
-# sweep starts, and delete each program's own image before that program is
-# built, so a stale archive or a leftover image can never stand in for a
-# rebuild that did not happen. Both keep going past a program that fails to
-# build, and report at the end which ones built and which did not.
+# `examples` deletes the archive and rebuilds it before the sweep starts, and
+# deletes each program's own image before that program is built, so a stale
+# archive or a leftover image can never stand in for a rebuild that did not
+# happen. It keeps going past a program that fails to build, and reports at
+# the end which ones built and which did not.
 #
 # `clean-board` rather than `clean` because Circle's Rules.mk already defines
 # a `clean` of its own, and two recipes for one target make GNU make warn on
@@ -113,14 +107,12 @@ export BOARD CIRCLE_WORLDS SHIM FPC_COMPILER FPC_UNITS FPC_PACKAGES LIBFPC_HOME
 
 # Read off the directories on disk rather than kept by hand: a directory
 # counts only if it carries a Makefile of its own, which is what separates a
-# real example or milestone from a leftover build-only directory with no
-# source in it.
+# real example from a leftover build-only directory with no source in it.
 EXAMPLES   := $(sort $(notdir $(patsubst %/,%,$(dir $(wildcard examples/*/Makefile)))))
-MILESTONES := $(sort $(notdir $(patsubst %/,%,$(dir $(wildcard milestones/*/Makefile)))))
 
-.PHONY: all lib all-boards examples milestones clean-board rebuild help $(EXAMPLES) $(MILESTONES)
+.PHONY: all lib all-boards examples clean-board rebuild help $(EXAMPLES)
 
-all: lib examples milestones
+all: lib examples
 
 lib: libfpc-$(BOARD).a
 
@@ -158,34 +150,14 @@ examples:
 	echo ""; echo "===== examples built =====$$ok"; \
 	[ -z "$$broke" ] || { echo "===== examples DID NOT BUILD =====$$broke" >&2; exit 1; }
 
-# The same, for milestones/.
-milestones:
-	+@$(NOT_DRY_RUN)
-	@rm -f libfpc-$(BOARD).a
-	@$(MAKE) libfpc-$(BOARD).a BOARD=$(BOARD)
-	@ok=""; broke=""; \
-	for e in $(MILESTONES); do \
-		echo ""; echo "===== milestones/$$e ====="; \
-		rm -f milestones/$$e/build/$(BOARD)/kernel*.img; \
-		if $(MAKE) -C milestones/$$e BOARD=$(BOARD); then ok="$$ok $$e"; \
-		else broke="$$broke $$e"; fi; \
-	done; \
-	echo ""; echo "===== milestones built =====$$ok"; \
-	[ -z "$$broke" ] || { echo "===== milestones DID NOT BUILD =====$$broke" >&2; exit 1; }
-
 $(EXAMPLES): lib
 	+@$(NOT_DRY_RUN)
 	@$(MAKE) -C examples/$@
-
-$(MILESTONES): lib
-	+@$(NOT_DRY_RUN)
-	@$(MAKE) -C milestones/$@
 
 clean-board:
 	+@$(NOT_DRY_RUN)
 	@rm -rf build/$(BOARD) libfpc-$(BOARD).a
 	@for e in $(EXAMPLES); do $(MAKE) -C examples/$$e clean-board || exit 1; done
-	@for e in $(MILESTONES); do $(MAKE) -C milestones/$$e clean-board || exit 1; done
 
 # Any measurement that has to be right is taken off a build from nothing, and
 # a tree built under flags that have since changed is exactly what selective
@@ -196,7 +168,7 @@ rebuild:
 	@$(MAKE) all BOARD=$(BOARD)
 
 help:
-	@sed -n '2,53p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
+	@sed -n '2,48p' $(firstword $(MAKEFILE_LIST)) | sed 's/^# \{0,1\}//'
 
 # ---------------------------------------------------------------------------
 # The archive. It needs the board's world, so guard the rules that use one:

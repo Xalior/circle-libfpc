@@ -12,8 +12,7 @@ alternatives do not work.
 
 **Point `FPC_UNIT_SRC_DIRS` at the binding's source.** `fpc-app.mk` compiles
 every unit it finds there beside the program and links their objects; read its
-header for the whole of that. `milestones/m8/Makefile` takes the binding's
-directory as `SDL2_PASCAL_UNITS` and refuses to build without one.
+header for the whole of that.
 
 **`units/sdl2circle.pas` is this library's own, and it is one unit.** It
 declares the calls in `circle-libsdl2`'s `SDL_circle.h` that no SDL binding
@@ -59,8 +58,3 @@ larger - which is smaller. Passing the address of a bare one to
 desktop the overrun lands in another local; here it lands on a stack this
 library allocated, and Circle lays the core stacks out with no guard page
 between them.
-
-So an event is passed through a variant record whose other arm is a byte array
-past 56. `milestones/m8` carries one and prints both sizes - its own and the C
-one, which its host kernel prints from the compiler that built the library -
-so the difference is on the log rather than in a comment.
